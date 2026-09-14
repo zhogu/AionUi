@@ -48,7 +48,11 @@ vi.mock('@arco-design/web-react', () => ({
 
 vi.mock('@renderer/components/Markdown', () => ({
   __esModule: true,
-  default: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  default: ({ children }: { children?: React.ReactNode }) => (
+    <div data-testid='markdown-view' data-markdown={typeof children === 'string' ? children : undefined}>
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock('@/renderer/components/base/FileChangesPanel', () => ({
@@ -378,6 +382,55 @@ describe('MessageAcpToolCall image output', () => {
     );
 
     expect(screen.getByText(/echo hello/)).toBeInTheDocument();
+  });
+
+  it('renders a completed task_complete result as standalone markdown', () => {
+    const summary = '**Done**\n\n- First result\n- Second result';
+
+    render(
+      <MessageAcpToolCall
+        message={createMessage({
+          ...baseUpdate,
+          tool_call_id: 'task-complete-1',
+          title: 'task_complete',
+          rawInput: { summary },
+          raw_output: {
+            content: summary,
+            status: 'completed',
+          },
+          content: [
+            {
+              type: 'content',
+              content: {
+                type: 'text',
+                text: summary,
+              },
+            },
+          ],
+        })}
+      />
+    );
+
+    expect(screen.getByTestId('markdown-view')).toHaveAttribute('data-markdown', summary);
+    expect(screen.queryByText('task_complete')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tool Call ID/)).not.toBeInTheDocument();
+  });
+
+  it('keeps an unfinished task_complete call in its tool card', () => {
+    render(
+      <MessageAcpToolCall
+        message={createMessage({
+          ...baseUpdate,
+          tool_call_id: 'task-complete-running',
+          title: 'task_complete',
+          status: 'in_progress',
+        })}
+      />
+    );
+
+    expect(screen.getByText('task_complete')).toBeInTheDocument();
+    expect(screen.getByText('In Progress')).toBeInTheDocument();
+    expect(screen.getByText(/Tool Call ID/)).toBeInTheDocument();
   });
 
   it('renders an empty diff content with fallback file metadata', () => {

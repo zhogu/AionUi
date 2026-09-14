@@ -99,6 +99,29 @@ const getKindDisplayName = (toolKind: string) => {
   }
 };
 
+const getTaskCompleteMarkdown = (update: IMessageAcpToolCall['content']['update']): string | undefined => {
+  if (update.title.trim() !== 'task_complete' || update.status !== 'completed') {
+    return undefined;
+  }
+
+  const contentText = update.content
+    ?.filter(
+      (item) =>
+        item.type === 'content' &&
+        item.content?.type === 'text' &&
+        typeof item.content.text === 'string' &&
+        item.content.text.trim().length > 0
+    )
+    .map((item) => (item.type === 'content' && item.content?.type === 'text' ? item.content.text : ''))
+    .join('\n');
+  if (contentText) {
+    return contentText;
+  }
+
+  const rawOutput = update.rawOutput ?? update.raw_output;
+  return typeof rawOutput?.content === 'string' && rawOutput.content.trim() ? rawOutput.content : undefined;
+};
+
 const MessageAcpToolCall: React.FC<{ message: IMessageAcpToolCall }> = ({ message }) => {
   const { t } = useTranslation();
   const { content } = message;
@@ -107,6 +130,7 @@ const MessageAcpToolCall: React.FC<{ message: IMessageAcpToolCall }> = ({ messag
   }
   const { update } = content;
   const { tool_call_id, kind, title, status, rawInput, content: diffContent } = update;
+  const taskCompleteMarkdown = getTaskCompleteMarkdown(update);
   const hasOnlyDiffs =
     Array.isArray(diffContent) &&
     diffContent.length > 0 &&
@@ -126,6 +150,14 @@ const MessageAcpToolCall: React.FC<{ message: IMessageAcpToolCall }> = ({ messag
     },
     [messageApi, t]
   );
+
+  if (taskCompleteMarkdown) {
+    return (
+      <div className='w-full min-w-0 mb-2'>
+        <MarkdownView>{taskCompleteMarkdown}</MarkdownView>
+      </div>
+    );
+  }
 
   if (hasOnlyDiffs) {
     return (

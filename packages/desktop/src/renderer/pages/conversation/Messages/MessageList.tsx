@@ -97,6 +97,9 @@ const hasRenderableAcpDiff = (message: IMessageAcpToolCall): boolean => {
   );
 };
 
+const isTaskCompleteAcpToolCall = (message: IMessageAcpToolCall): boolean =>
+  message.content?.update?.title.trim() === 'task_complete';
+
 const isWriteFileResult = (value: unknown): value is WriteFileResult =>
   isRecord(value) &&
   'file_diff' in value &&
@@ -428,7 +431,7 @@ const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode }>
         continue;
       }
       if (message.type === 'acp_tool_call') {
-        if (hasRenderableAcpDiff(message)) {
+        if (isTaskCompleteAcpToolCall(message) || hasRenderableAcpDiff(message)) {
           pushStandaloneMessage(message);
           continue;
         }

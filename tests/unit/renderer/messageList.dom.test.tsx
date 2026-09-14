@@ -177,6 +177,7 @@ function createTextMessage(): IMessageText {
 type AcpToolCallOptions = {
   id?: string;
   status?: IMessageAcpToolCall['content']['update']['status'];
+  title?: string;
   content?: IMessageAcpToolCall['content']['update']['content'];
   truncated?: boolean;
 };
@@ -184,6 +185,7 @@ type AcpToolCallOptions = {
 function createAcpToolCall({
   id = 'acp-edit-1',
   status = 'completed',
+  title = 'Edit file',
   content,
   truncated = false,
 }: AcpToolCallOptions = {}): IMessageAcpToolCall {
@@ -208,7 +210,7 @@ function createAcpToolCall({
         sessionUpdate: 'tool_call_update',
         tool_call_id: id,
         status,
-        title: 'Edit file',
+        title,
         kind: 'edit',
         content,
       },
@@ -477,6 +479,21 @@ describe('MessageList', () => {
 
     expect(screen.getByTestId('tool-summary')).toHaveTextContent('acp-read-1');
     expect(screen.queryByTestId('acp-tool-call')).not.toBeInTheDocument();
+  });
+
+  it('renders task_complete outside View Steps so its markdown can display immediately', () => {
+    const message = createAcpToolCall({
+      id: 'task-complete-1',
+      title: 'task_complete',
+      content: [{ type: 'content', content: { type: 'text', text: '**Done**' } }],
+    });
+
+    render(<MessageList />, {
+      wrapper: ({ children }) => <Wrapper messages={[message]}>{children}</Wrapper>,
+    });
+
+    expect(screen.getByTestId('acp-tool-call')).toHaveAttribute('data-message-id', message.id);
+    expect(screen.queryByTestId('tool-summary')).not.toBeInTheDocument();
   });
 
   it('keeps malformed ACP diffs in View Steps instead of showing misleading stats', () => {
