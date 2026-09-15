@@ -99,10 +99,10 @@ const logCommandQueue = (conversation_id: string, event: string, payload: Record
 
 const normalizeQueueMode = (mode: unknown): ConversationCommandQueueMode => (mode === 'auto' ? 'auto' : 'manual');
 
-const createDefaultQueueState = (): ConversationCommandQueueState => ({
+const createDefaultQueueState = (mode: ConversationCommandQueueMode = 'manual'): ConversationCommandQueueState => ({
   items: [],
   isPaused: false,
-  mode: 'manual',
+  mode,
 });
 
 const queueStore = new Map<string, ConversationCommandQueueState>();
@@ -260,19 +260,22 @@ const isQueueValidationFailure = (
   validation: QueueValidationSuccess | QueueValidationFailure
 ): validation is QueueValidationFailure => !validation.ok;
 
-const readPersistedQueueState = (conversation_id: string): ConversationCommandQueueState => {
+const readPersistedQueueState = (
+  conversation_id: string,
+  defaultMode: ConversationCommandQueueMode = 'manual'
+): ConversationCommandQueueState => {
   if (queueStore.has(conversation_id)) {
     return queueStore.get(conversation_id) ?? createDefaultQueueState();
   }
 
   if (typeof window === 'undefined') {
-    return createDefaultQueueState();
+    return createDefaultQueueState(defaultMode);
   }
 
   try {
     const stored = window.sessionStorage.getItem(getStorageKey(conversation_id));
     if (!stored) {
-      return createDefaultQueueState();
+      return createDefaultQueueState(defaultMode);
     }
 
     const parsed = JSON.parse(stored) as unknown;
@@ -285,7 +288,7 @@ const readPersistedQueueState = (conversation_id: string): ConversationCommandQu
     return normalized;
   } catch (error) {
     console.warn('[conversation-command-queue] Failed to read persisted queue state:', error);
-    return createDefaultQueueState();
+    return createDefaultQueueState(defaultMode);
   }
 };
 
@@ -300,10 +303,19 @@ const removePersistedQueueState = (conversation_id: string): void => {
   }
 };
 
-const persistQueueState = (conversation_id: string, state: ConversationCommandQueueState): void => {
+const persistQueueState = (
+  conversation_id: string,
+  state: ConversationCommandQueueState,
+  preserveEmptyManualMode = false
+): void => {
   const normalized = normalizeQueueState(state);
 
-  if (normalized.items.length === 0 && !normalized.isPaused && normalized.mode === 'manual') {
+  if (
+    !preserveEmptyManualMode &&
+    normalized.items.length === 0 &&
+    !normalized.isPaused &&
+    normalized.mode === 'manual'
+  ) {
     removePersistedQueueState(conversation_id);
     return;
   }
@@ -411,6 +423,7 @@ export const getCommandQueueExecutionGate = ({
 type UseConversationCommandQueueOptions = {
   conversation_id: string;
   enabled?: boolean;
+  defaultMode?: ConversationCommandQueueMode;
   isBusy: boolean;
   isHydrated?: boolean;
   runtimeGate?: ConversationCommandQueueRuntimeGate;
@@ -427,6 +440,7 @@ type BackgroundCommandQueueRunner = {
   active: boolean;
   executing: boolean;
   onExecute: (item: ConversationCommandQueueItem) => Promise<void>;
+  onExecutionSettled: () => void;
 };
 
 const backgroundRunners = new Map<string, BackgroundCommandQueueRunner>();
@@ -461,11 +475,11 @@ const registerBackgroundCommandQueueRunner = (
   runner: Omit<BackgroundCommandQueueRunner, 'active' | 'executing'>
 ): void => {
   const existing = backgroundRunners.get(runner.conversation_id);
-  backgroundRunners.set(runner.conversation_id, {
-    ...runner,
-    active: true,
-    executing: existing?.executing ?? false,
-  });
+  if (existing) {
+    Object.assign(existing, runner, { active: true });
+  } else {
+    backgroundRunners.set(runner.conversation_id, { ...runner, active: true, executing: false });
+  }
   ensureBackgroundTurnCompletedListener();
 };
 
@@ -476,6 +490,10 @@ const detachBackgroundCommandQueueRunner = (conversation_id: string): void => {
   }
 
   const state = readPersistedQueueState(conversation_id);
+  if (runner.executing) {
+    runner.active = false;
+    return;
+  }
   if (state.items.length === 0 || state.isPaused || state.mode === 'manual') {
     backgroundRunners.delete(conversation_id);
     releaseBackgroundTurnCompletedListener();
@@ -554,6 +572,7 @@ const drainBackgroundCommandQueue = async (runner: BackgroundCommandQueueRunner)
     Message.warning('The next queued command could not start. Edit, reorder, or remove it to continue.');
   } finally {
     runner.executing = false;
+    if (runner.active) runner.onExecutionSettled();
     if (shouldContinueDrain) {
       void drainBackgroundCommandQueue(runner);
     }
@@ -562,6 +581,7 @@ const drainBackgroundCommandQueue = async (runner: BackgroundCommandQueueRunner)
 
 export const resetConversationCommandQueueBackgroundRunnerForTest = (): void => {
   backgroundRunners.clear();
+  queueStore.clear();
   backgroundTurnCompletedUnsubscribe?.();
   backgroundTurnCompletedUnsubscribe = null;
 };
@@ -595,6 +615,7 @@ const getQueueValidationMessage = (
 export const useConversationCommandQueue = ({
   conversation_id,
   enabled = true,
+  defaultMode = 'manual',
   isBusy,
   isHydrated = true,
   runtimeGate,
@@ -602,9 +623,10 @@ export const useConversationCommandQueue = ({
 }: UseConversationCommandQueueOptions) => {
   const { t } = useTranslation();
   const executionGate = getCommandQueueExecutionGate({ isBusy, isHydrated, runtimeGate });
-  const { data = createDefaultQueueState(), mutate } = useSWR(
-    [`/conversation-command-queue/${conversation_id}`, conversation_id, enabled],
-    ([, id, is_enabled]) => (is_enabled ? readPersistedQueueState(id) : createDefaultQueueState())
+  const { data = createDefaultQueueState(defaultMode), mutate } = useSWR(
+    [`/conversation-command-queue/${conversation_id}`, conversation_id, enabled, defaultMode],
+    ([, id, is_enabled, mode]) => (is_enabled ? readPersistedQueueState(id, mode) : createDefaultQueueState()),
+    { fallbackData: enabled ? readPersistedQueueState(conversation_id, defaultMode) : createDefaultQueueState() }
   );
 
   const stateRef = useRef(data);
@@ -624,7 +646,9 @@ export const useConversationCommandQueue = ({
 
   useEffect(() => {
     onExecuteRef.current = onExecute;
-  }, [onExecute]);
+    const runner = backgroundRunners.get(conversation_id);
+    if (runner?.active) runner.onExecute = onExecute;
+  }, [conversation_id, onExecute]);
 
   useEffect(() => {
     if (waitingForBusyReleaseRef.current) {
@@ -694,13 +718,17 @@ export const useConversationCommandQueue = ({
 
     registerBackgroundCommandQueueRunner({
       conversation_id,
-      onExecute: (item) => onExecuteRef.current(item),
+      onExecute: onExecuteRef.current,
+      onExecutionSettled: () => {
+        void mutate(readPersistedQueueState(conversation_id, defaultMode), { revalidate: false });
+        setExecutionGateVersion((version) => version + 1);
+      },
     });
 
     return () => {
       detachBackgroundCommandQueueRunner(conversation_id);
     };
-  }, [conversation_id, enabled]);
+  }, [conversation_id, defaultMode, enabled, mutate]);
 
   useEffect(() => {
     if (enabled) {
@@ -733,16 +761,18 @@ export const useConversationCommandQueue = ({
 
       return mutate(
         (current) => {
-          const nextState = normalizeQueueState(updater(current ?? createDefaultQueueState()));
+          const nextState = normalizeQueueState(
+            updater(current ?? readPersistedQueueState(conversation_id, defaultMode))
+          );
           stateRef.current = nextState;
           pausedRef.current = nextState.isPaused;
-          persistQueueState(conversation_id, nextState);
+          persistQueueState(conversation_id, nextState, defaultMode === 'auto');
           return nextState;
         },
         { revalidate: false }
       );
     },
-    [conversation_id, enabled, mutate]
+    [conversation_id, defaultMode, enabled, mutate]
   );
 
   const clear = useCallback(() => {
@@ -752,8 +782,8 @@ export const useConversationCommandQueue = ({
     observedBusyBlockedGateRef.current = false;
     pausedRef.current = false;
     logCommandQueue(conversation_id, 'cleared');
-    void updateState(() => createDefaultQueueState());
-  }, [conversation_id, updateState]);
+    void updateState((state) => createDefaultQueueState(defaultMode === 'auto' ? state.mode : 'manual'));
+  }, [conversation_id, defaultMode, updateState]);
 
   useAddEventListener(
     'conversation.deleted',
@@ -992,14 +1022,14 @@ export const useConversationCommandQueue = ({
     void updateState((state) => {
       if (state.items.length === 0) {
         pausedRef.current = false;
-        return createDefaultQueueState();
+        return createDefaultQueueState(defaultMode === 'auto' ? state.mode : 'manual');
       }
       return {
         ...state,
         isPaused: true,
       };
     });
-  }, [conversation_id, data.items.length, enabled, updateState]);
+  }, [conversation_id, data.items.length, defaultMode, enabled, updateState]);
 
   const resume = useCallback(() => {
     if (!enabled) {
@@ -1088,12 +1118,16 @@ export const useConversationCommandQueue = ({
       waitingForTurnCompletionRef.current ||
       waitingForBusyReleaseRef.current ||
       interactionLockedRef.current ||
+      backgroundRunners.get(conversation_id)?.executing ||
       data.items.length === 0
     ) {
       return;
     }
 
     const [nextCommand, ...remainingCommands] = data.items;
+    const runner = backgroundRunners.get(conversation_id);
+    if (!runner) return;
+    runner.executing = true;
     waitingForTurnStartRef.current = true;
     observedBusyBlockedGateRef.current = false;
     logCommandQueue(conversation_id, 'dequeued', {
@@ -1101,15 +1135,28 @@ export const useConversationCommandQueue = ({
       remainingItemCount: remainingCommands.length,
     });
 
-    // Await the state update so the item leaves the UI only once the send is
-    // confirmed, preventing it from disappearing before the backend accepts it.
+    // Reserve the item before sending. The shared runner lock survives route
+    // unmounts and prevents another drain while acceptance is still pending.
     void updateState((state) => ({
       ...state,
       items: remainingCommands,
       isPaused: false,
-    })).then(() =>
-      onExecuteRef.current(nextCommand).catch((error) => {
+    }))
+      .then(() => runner.onExecute(nextCommand))
+      .catch((error) => {
         const busyError = classifyConversationBusyError(error);
+        // The sending hook may have unmounted. Restore against shared state,
+        // then let the current runner refresh its own SWR cache on settlement.
+        const latestState = readPersistedQueueState(conversation_id, defaultMode);
+        persistQueueState(
+          conversation_id,
+          {
+            ...latestState,
+            items: restoreQueuedCommand(latestState.items, nextCommand),
+            isPaused: !busyError,
+          },
+          defaultMode === 'auto'
+        );
         if (busyError) {
           waitingForBusyReleaseRef.current = true;
           waitingForTurnStartRef.current = false;
@@ -1122,11 +1169,6 @@ export const useConversationCommandQueue = ({
             code: busyError.code,
             remainingItemCount: remainingCommands.length + 1,
           });
-          void updateState((state) => ({
-            ...state,
-            items: restoreQueuedCommand(state.items, nextCommand),
-            isPaused: false,
-          }));
           return;
         }
         console.error('[conversation-command-queue] Failed to execute queued command:', error);
@@ -1137,22 +1179,25 @@ export const useConversationCommandQueue = ({
         waitingForTurnStartRef.current = false;
         waitingForTurnCompletionRef.current = false;
         pausedRef.current = true;
-        void updateState((state) => ({
-          ...state,
-          items: restoreQueuedCommand(state.items, nextCommand),
-          isPaused: true,
-        }));
         Message.warning(
           t('conversation.commandQueue.pausedAfterFailure', {
             defaultValue: 'The next queued command could not start. Edit, reorder, or remove it to continue.',
           })
         );
       })
-    );
+      .finally(() => {
+        runner.executing = false;
+        if (runner.active) {
+          runner.onExecutionSettled();
+        } else if (!waitingForBusyReleaseRef.current) {
+          void drainBackgroundCommandQueue(runner);
+        }
+      });
   }, [
     conversation_id,
     data.items,
     data.mode,
+    defaultMode,
     enabled,
     executionGateVersion,
     executionGate.canExecute,
