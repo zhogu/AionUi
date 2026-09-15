@@ -10,8 +10,16 @@ import { SWRConfig } from 'swr';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type ConversationCommandQueueRuntimeGate,
+  type ConversationCommandQueueMode,
+  resetConversationCommandQueueBackgroundRunnerForTest,
   useConversationCommandQueue,
 } from '@/renderer/pages/conversation/platforms/useConversationCommandQueue';
+
+vi.mock('@/common', () => ({
+  ipcBridge: {
+    conversation: { turnCompleted: { on: vi.fn(() => () => {}) } },
+  },
+}));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -61,11 +69,13 @@ const storageKey = (conversationId: string) => `conversation-command-queue/${con
 const renderQueue = ({
   conversation_id,
   runtimeGate,
+  defaultMode,
   isBusy = false,
   onExecute = vi.fn().mockResolvedValue(undefined),
 }: {
   conversation_id: string;
   runtimeGate: ConversationCommandQueueRuntimeGate;
+  defaultMode?: ConversationCommandQueueMode;
   isBusy?: boolean;
   onExecute?: (item: Parameters<Parameters<typeof useConversationCommandQueue>[0]['onExecute']>[0]) => Promise<void>;
 }) =>
@@ -74,6 +84,7 @@ const renderQueue = ({
       useConversationCommandQueue({
         conversation_id,
         enabled: true,
+        defaultMode,
         isBusy: busy,
         runtimeGate: gate,
         onExecute,
@@ -87,10 +98,12 @@ const renderQueue = ({
 describe('useConversationCommandQueue mode & send-now', () => {
   beforeEach(() => {
     sessionStorage.clear();
+    resetConversationCommandQueueBackgroundRunnerForTest();
     vi.spyOn(console, 'info').mockImplementation(() => {});
   });
 
   afterEach(() => {
+    resetConversationCommandQueueBackgroundRunnerForTest();
     vi.restoreAllMocks();
     sessionStorage.clear();
   });
@@ -98,6 +111,87 @@ describe('useConversationCommandQueue mode & send-now', () => {
   it('defaults to manual mode', () => {
     const { result } = renderQueue({ conversation_id: 'conv-manual-default', runtimeGate: processingGate });
     expect(result.current.mode).toBe('manual');
+  });
+
+  it('uses the requested auto default for a new Copilot queue', () => {
+    const { result } = renderQueue({
+      conversation_id: 'copilot-auto-default',
+      runtimeGate: processingGate,
+      defaultMode: 'auto',
+    });
+    expect(result.current.mode).toBe('auto');
+  });
+
+  it('keeps the requested auto default if persisted state is unreadable', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    sessionStorage.setItem(storageKey('copilot-corrupt'), '{');
+    const { result } = renderQueue({
+      conversation_id: 'copilot-corrupt',
+      runtimeGate: processingGate,
+      defaultMode: 'auto',
+    });
+    expect(result.current.mode).toBe('auto');
+  });
+
+  it('preserves an explicit manual choice for an empty Copilot queue after reload', async () => {
+    const first = renderQueue({
+      conversation_id: 'copilot-manual-choice',
+      runtimeGate: processingGate,
+      defaultMode: 'auto',
+    });
+    act(() => first.result.current.toggleMode());
+    await waitFor(() => expect(first.result.current.mode).toBe('manual'));
+    first.unmount();
+    resetConversationCommandQueueBackgroundRunnerForTest();
+
+    const restored = renderQueue({
+      conversation_id: 'copilot-manual-choice',
+      runtimeGate: processingGate,
+      defaultMode: 'auto',
+    });
+    expect(restored.result.current.mode).toBe('manual');
+  });
+
+  it('does not reset the Copilot mode preference when clearing or stopping an empty queue', async () => {
+    const { result } = renderQueue({
+      conversation_id: 'copilot-clear',
+      runtimeGate: processingGate,
+      defaultMode: 'auto',
+    });
+    act(() => {
+      result.current.enqueue({ input: 'queued', files: [] });
+      result.current.clear();
+      result.current.pause();
+    });
+    await waitFor(() => expect(result.current.items).toEqual([]));
+    expect(result.current.mode).toBe('auto');
+    act(() => {
+      result.current.toggleMode();
+      result.current.clear();
+    });
+    await waitFor(() => expect(result.current.mode).toBe('manual'));
+  });
+
+  it('honors persisted manual drafts instead of overriding them with the Copilot auto default', async () => {
+    sessionStorage.setItem(
+      storageKey('copilot-existing-manual'),
+      JSON.stringify({
+        items: [{ id: 'q1', input: 'wait for me', files: [], created_at: 1 }],
+        mode: 'manual',
+        isPaused: false,
+      })
+    );
+    const onExecute = vi.fn();
+    const { result } = renderQueue({
+      conversation_id: 'copilot-existing-manual',
+      runtimeGate: idleGate,
+      defaultMode: 'auto',
+      onExecute,
+    });
+    await act(async () => {});
+    expect(result.current.mode).toBe('manual');
+    expect(result.current.items).toHaveLength(1);
+    expect(onExecute).not.toHaveBeenCalled();
   });
 
   it('toggles between manual and auto', async () => {
