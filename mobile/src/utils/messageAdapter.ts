@@ -38,6 +38,43 @@ export type IResponseMessage = {
   conversation_id: string;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Extract the final answer without changing the stored tool-call identity. */
+export function getTaskCompleteMarkdown(message: TMessage): string | undefined {
+  if (message.type !== 'acp_tool_call' || !isRecord(message.content)) return undefined;
+  const update = message.content.update;
+  if (
+    !isRecord(update) ||
+    typeof update.title !== 'string' ||
+    update.title.trim() !== 'task_complete' ||
+    update.status !== 'completed'
+  )
+    return undefined;
+
+  const text = Array.isArray(update.content)
+    ? update.content
+        .flatMap((item: unknown) => {
+          if (!isRecord(item) || item.type !== 'content' || !isRecord(item.content)) return [];
+          const content = item.content;
+          return content.type === 'text' && typeof content.text === 'string' && content.text.trim()
+            ? [content.text]
+            : [];
+        })
+        .join('\n')
+    : '';
+  if (text) return text;
+  const output = update.rawOutput ?? update.raw_output;
+  return isRecord(output) && typeof output.content === 'string' && output.content.trim() ? output.content : undefined;
+}
+
+const acpToolId = (content: unknown): string | undefined => {
+  if (!isRecord(content) || !isRecord(content.update)) return undefined;
+  const id = content.update.tool_call_id ?? content.update.toolCallId;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
+};
+
 /**
  * Transform a raw WebSocket IResponseMessage into a renderable TMessage.
  */
@@ -230,11 +267,24 @@ export function composeMessage(message: TMessage | undefined, list: TMessage[]):
   }
 
   if (message.type === 'acp_tool_call') {
+    const toolId = acpToolId(message.content);
     for (let i = 0; i < list.length; i++) {
       const msg = list[i];
-      if (msg.type === 'acp_tool_call' && msg.content.update?.toolCallId === message.content.update?.toolCallId) {
+      if (
+        toolId &&
+        msg.type === 'acp_tool_call' &&
+        msg.conversation_id === message.conversation_id &&
+        acpToolId(msg.content) === toolId
+      ) {
         const updated = [...list];
-        updated[i] = { ...msg, content: { ...msg.content, ...message.content } };
+        updated[i] = {
+          ...msg,
+          content: {
+            ...msg.content,
+            ...message.content,
+            update: { ...msg.content.update, ...message.content.update },
+          },
+        };
         return updated;
       }
     }
