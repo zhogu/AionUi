@@ -2,6 +2,7 @@ import type { AcpConfigOptionDto, SetConfigOptionResponse } from '@/common/types
 import { BackendHttpError } from '@/common/adapter/httpBridge';
 import {
   classifyConfigSetError,
+  deriveContextWindowOption,
   deriveSelectOption,
   hasObservedValue,
 } from '@/renderer/hooks/agent/useAcpConfigOptions';
@@ -93,5 +94,57 @@ describe('ACP config option derivation', () => {
     });
 
     expect(classifyConfigSetError(error)).toBe('config_update_in_progress');
+  });
+
+  it('derives context choices from runtime metadata without inventing model capacities', () => {
+    const context = deriveContextWindowOption([
+      ...options,
+      {
+        id: 'context-capacity',
+        category: 'context_window',
+        type: 'select',
+        current_value: 'standard',
+        options: [
+          { value: 'standard', name: '256k', description: 'Standard context' },
+          { value: 'extended', name: '1M', description: 'Extended context' },
+        ],
+      },
+    ]);
+
+    expect(context?.id).toBe('context-capacity');
+    expect(context?.currentValue).toBe('standard');
+    expect(context?.options).toEqual([
+      { value: 'standard', label: '256k', description: 'Standard context' },
+      { value: 'extended', label: '1M', description: 'Extended context' },
+    ]);
+  });
+
+  it.each([null, undefined, [], options].map((runtimeOptions) => ({ runtimeOptions })))(
+    'does not offer context selection when absent',
+    ({ runtimeOptions }) => {
+      expect(deriveContextWindowOption(runtimeOptions)).toBeNull();
+    }
+  );
+
+  it.each([[], ['default'], ['default', 'default']].map((values) => ({ values })))(
+    'hides a context option without distinct choices: $values',
+    ({ values }) => {
+      expect(
+        deriveContextWindowOption([
+          {
+            id: 'context_window',
+            type: 'select',
+            current_value: 'default',
+            options: values.map((value) => ({ value })),
+          },
+        ])
+      ).toBeNull();
+    }
+  );
+
+  it('does not treat a read-only context size as a selectable window', () => {
+    expect(
+      deriveContextWindowOption([{ id: 'context_window', type: 'string', current_value: '256000', options: [] }])
+    ).toBeNull();
   });
 });

@@ -40,6 +40,10 @@
     "busy": "다른 설정을 적용하는 중입니다. 잠시 후 다시 시도하세요.",
     "failed": "설정 적용에 실패했습니다. 이전 상태가 계속 표시됩니다."
   },
+  "contextWindow": {
+    "label": "컨텍스트 길이",
+    "switchSuccess": "컨텍스트 길이가 전환되었습니다"
+  },
   "thoughtLevel": {
     "label": "사고 강도",
     "switchSuccess": "사고 강도가 전환되었습니다",

@@ -80,6 +80,12 @@ export function deriveSelectOption(
   };
 }
 
+/** Show a context selector only when the current model advertises distinct choices. */
+export function deriveContextWindowOption(options: AcpConfigOptionDto[] | null | undefined): AcpDerivedOption | null {
+  const option = deriveSelectOption(options, 'context_window', ['context_window']);
+  return option && new Set(option.options.map((choice) => choice.value)).size > 1 ? option : null;
+}
+
 export function hasObservedValue(
   response: SetConfigOptionResponse,
   optionId: string,
@@ -436,6 +442,7 @@ export function useAcpConfigOptions({
     mode: deriveSelectOption(configOptions, 'mode', ['mode']),
     model: deriveSelectOption(configOptions, 'model', ['model']),
     thoughtLevel: deriveSelectOption(configOptions, 'thought_level', ['thought_level', 'reasoning_effort']),
+    contextWindow: deriveContextWindowOption(configOptions),
     reload,
     setConfigOption,
     isConfigOptionBlocked,
