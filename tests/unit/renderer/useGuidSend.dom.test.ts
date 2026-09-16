@@ -11,9 +11,16 @@ import { useGuidSend, type GuidSendDeps } from '@/renderer/pages/guid/hooks/useG
 
 const createConversationInvokeMock = vi.fn();
 const swrMutateMock = vi.fn();
+const ensureRuntimeMock = vi.fn();
+const setConfigOptionMock = vi.fn();
+
+vi.mock('@/renderer/pages/conversation/utils/ensureConversationRuntime', () => ({
+  ensureConversationRuntime: (...args: unknown[]) => ensureRuntimeMock(...args),
+}));
 
 vi.mock('@/common', () => ({
   ipcBridge: {
+    acpConversation: { setConfigOption: { invoke: (...args: unknown[]) => setConfigOptionMock(...args) } },
     conversation: {
       create: {
         invoke: (...args: unknown[]) => createConversationInvokeMock(...args),
@@ -80,6 +87,79 @@ describe('useGuidSend', () => {
     createConversationInvokeMock.mockResolvedValue({ id: 'conv-1' });
     swrMutateMock.mockReset();
     swrMutateMock.mockResolvedValue(undefined);
+    ensureRuntimeMock.mockReset();
+    ensureRuntimeMock.mockResolvedValue({});
+    setConfigOptionMock.mockReset();
+    sessionStorage.clear();
+  });
+
+  it('applies the homepage context before handing off the first prompt', async () => {
+    const deps = {
+      ...createDeps(),
+      selectedContextWindowValue: 'long_context',
+      contextWindowOptionId: 'context_window',
+    };
+    let confirm!: (result: unknown) => void;
+    setConfigOptionMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          confirm = resolve;
+        })
+    );
+    const { result } = renderHook(() => useGuidSend(deps));
+    const sending = result.current.handleSend();
+    await vi.waitFor(() =>
+      expect(setConfigOptionMock).toHaveBeenCalledWith({
+        conversation_id: 'conv-1',
+        option_id: 'context_window',
+        value: 'long_context',
+      })
+    );
+    expect(sessionStorage.getItem('acp_initial_message_conv-1')).toBeNull();
+    expect(deps.navigate).not.toHaveBeenCalled();
+    await act(async () => {
+      confirm({ confirmation: 'observed', config_options: [{ id: 'context_window', current_value: 'long_context' }] });
+      await sending;
+    });
+    expect(ensureRuntimeMock).toHaveBeenCalledWith('conv-1');
+    expect(JSON.parse(sessionStorage.getItem('acp_initial_message_conv-1')!)).toMatchObject({ input: 'hello' });
+    expect(deps.navigate).toHaveBeenCalledWith('/conversation/conv-1');
+  });
+
+  it('keeps the first prompt unsent when the requested context is not confirmed', async () => {
+    const deps = {
+      ...createDeps(),
+      selectedContextWindowValue: 'long_context',
+      contextWindowOptionId: 'context_window',
+    };
+    setConfigOptionMock.mockResolvedValue({ confirmation: 'command_ack' });
+    const { result } = renderHook(() => useGuidSend(deps));
+    await expect(result.current.handleSend()).rejects.toThrow('config_not_observed');
+    expect(sessionStorage.getItem('acp_initial_message_conv-1')).toBeNull();
+    expect(deps.navigate).not.toHaveBeenCalled();
+  });
+
+  it('confirms reasoning before context when the backend ignores creation overrides', async () => {
+    const deps = {
+      ...createDeps(),
+      selectedThoughtLevelValue: 'high',
+      thoughtLevelOptionId: 'reasoning_effort',
+      selectedContextWindowValue: 'long_context',
+      contextWindowOptionId: 'context_window',
+    };
+    setConfigOptionMock.mockImplementation(async ({ option_id, value }) => ({
+      confirmation: 'observed',
+      config_options: [{ id: option_id, current_value: value }],
+    }));
+    const { result } = renderHook(() => useGuidSend(deps));
+    await act(async () => {
+      await result.current.handleSend();
+    });
+    expect(setConfigOptionMock.mock.calls.map(([option]) => [option.option_id, option.value])).toEqual([
+      ['reasoning_effort', 'high'],
+      ['context_window', 'long_context'],
+    ]);
+    expect(ensureRuntimeMock).toHaveBeenCalledTimes(1);
   });
 
   it('passes selected mode into assistant conversation overrides when creating a preset ACP conversation', async () => {

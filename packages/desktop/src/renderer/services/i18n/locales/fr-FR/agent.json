@@ -40,6 +40,10 @@
     "busy": "Un autre paramètre est en cours d'application. Réessayez plus tard.",
     "failed": "Échec de l'application du paramètre. L'état précédent est toujours affiché."
   },
+  "contextWindow": {
+    "label": "Fenêtre de contexte",
+    "switchSuccess": "Fenêtre de contexte modifiée"
+  },
   "thoughtLevel": {
     "label": "Niveau de réflexion",
     "switchSuccess": "Niveau de réflexion changé",

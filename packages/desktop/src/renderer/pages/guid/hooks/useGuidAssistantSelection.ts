@@ -13,6 +13,7 @@ import {
   buildAgentRuntimeModelInfo,
   buildAgentRuntimeSlashCommands,
   buildAgentRuntimeThoughtLevelOption,
+  buildAgentRuntimeContextWindowOption,
   type AgentRuntimeCatalog,
   type AgentRuntimeDerivedOption,
 } from '@/renderer/utils/model/agentRuntimeCatalog';
@@ -49,6 +50,9 @@ export type GuidAssistantSelectionResult = {
     value: React.SetStateAction<string>,
     options?: { persistPreference?: boolean }
   ) => void;
+  currentContextWindowOption: AgentRuntimeDerivedOption | null;
+  selectedContextWindowValue: string;
+  setSelectedContextWindowValue: (value: string) => void;
 };
 
 export function resolveInitialAssistantModel(models: string[]): string | null {
@@ -125,6 +129,7 @@ export const useGuidAssistantSelection = ({
   const [selectedMode, _setSelectedMode] = useState<string>('default');
   const [selectedAcpModel, _setSelectedAcpModel] = useState<string | null>(null);
   const [selectedThoughtLevelValue, _setSelectedThoughtLevelValue] = useState<string>('');
+  const [contextSelection, setContextSelection] = useState({ scope: '', value: '' });
   const { assistants } = useCustomAgentsLoader();
   const managedAgentRuntimeCatalog = useManagedAgentRuntimeCatalog();
 
@@ -234,16 +239,36 @@ export const useGuidAssistantSelection = ({
     [selectedManagedAgentRuntimeCatalog]
   );
   const selectedAgentRuntimeThoughtLevelOption = useMemo(
-    () => buildAgentRuntimeThoughtLevelOption(selectedManagedAgentRuntimeCatalog),
-    [selectedManagedAgentRuntimeCatalog]
+    () => buildAgentRuntimeThoughtLevelOption(selectedManagedAgentRuntimeCatalog, selectedAcpModel),
+    [selectedManagedAgentRuntimeCatalog, selectedAcpModel]
   );
   const currentThoughtLevelOption = useMemo<AgentRuntimeDerivedOption | null>(() => {
     if (!selectedAgentRuntimeThoughtLevelOption) return null;
     return {
       ...selectedAgentRuntimeThoughtLevelOption,
-      currentValue: selectedThoughtLevelValue || selectedAgentRuntimeThoughtLevelOption.currentValue,
+      currentValue: selectedAgentRuntimeThoughtLevelOption.options.some(
+        (option) => option.value === selectedThoughtLevelValue
+      )
+        ? selectedThoughtLevelValue
+        : selectedAgentRuntimeThoughtLevelOption.currentValue,
     };
   }, [selectedAgentRuntimeThoughtLevelOption, selectedThoughtLevelValue]);
+  const contextScope = `${selectedAssistantId ?? ''}:${selectedAcpModel ?? ''}`;
+  const contextOption = useMemo(
+    () => buildAgentRuntimeContextWindowOption(selectedManagedAgentRuntimeCatalog, selectedAcpModel),
+    [selectedManagedAgentRuntimeCatalog, selectedAcpModel]
+  );
+  // Cached current values belong to an earlier session, not this new conversation.
+  const selectedContextWindowValue =
+    contextOption &&
+    contextSelection.scope === contextScope &&
+    contextOption.options.some((option) => option.value === contextSelection.value)
+      ? contextSelection.value
+      : '';
+  const currentContextWindowOption = contextOption
+    ? { ...contextOption, currentValue: selectedContextWindowValue || 'default' }
+    : null;
+  const setSelectedContextWindowValue = (value: string) => setContextSelection({ scope: contextScope, value });
   const currentAgentModeOptions = selectedAgentRuntimeModeState.options;
 
   const selectedAssistantAvailable = useMemo(() => {
@@ -349,7 +374,10 @@ export const useGuidAssistantSelection = ({
     currentAgentAvailableCommands,
     currentAgentModeOptions,
     currentThoughtLevelOption,
-    selectedThoughtLevelValue,
+    selectedThoughtLevelValue: currentThoughtLevelOption?.currentValue ?? '',
     setSelectedThoughtLevelValue,
+    currentContextWindowOption,
+    selectedContextWindowValue,
+    setSelectedContextWindowValue,
   };
 };

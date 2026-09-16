@@ -40,6 +40,10 @@
     "busy": "已有设置正在应用，请稍后再试",
     "failed": "设置失败，界面已保留原状态"
   },
+  "contextWindow": {
+    "label": "上下文长度",
+    "switchSuccess": "上下文长度切换成功"
+  },
   "thoughtLevel": {
     "label": "思考强度",
     "switchSuccess": "思考强度切换成功",

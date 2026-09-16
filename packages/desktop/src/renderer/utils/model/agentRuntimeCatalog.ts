@@ -232,13 +232,36 @@ export function buildAgentRuntimeModeState(agent: AgentRuntimeCatalog | null | u
 }
 
 export function buildAgentRuntimeThoughtLevelOption(
-  agent: AgentRuntimeCatalog | null | undefined
+  agent: AgentRuntimeCatalog | null | undefined,
+  modelId?: string | null
 ): AgentRuntimeDerivedOption | null {
   if (!agent) return null;
-  return buildSelectOptionFromConfigOptions(normalizeConfigOptions(agent.config_options), 'thought_level', [
+  return buildSelectOptionFromConfigOptions(modelConfigOptions(agent, modelId), 'thought_level', [
     'thought_level',
     'reasoning_effort',
   ]);
+}
+
+function modelConfigOptions(agent: AgentRuntimeCatalog, modelId?: string | null): AcpSessionConfigOption[] {
+  const options = normalizeConfigOptions(agent.config_options);
+  if (!modelId) return options;
+  const modelOption = options.find((option) => option.category === 'model' || option.id === 'model');
+  const choice: unknown = modelOption?.options?.find((option) => option.value === modelId);
+  if (isRecord(choice) && isRecord(choice._meta) && Array.isArray(choice._meta['aionui/model-config'])) {
+    return normalizeConfigOptions(choice._meta['aionui/model-config']);
+  }
+  return options;
+}
+
+export function buildAgentRuntimeContextWindowOption(
+  agent: AgentRuntimeCatalog | null | undefined,
+  modelId?: string | null
+): AgentRuntimeDerivedOption | null {
+  if (!agent) return null;
+  const option = buildSelectOptionFromConfigOptions(modelConfigOptions(agent, modelId), 'context_window', [
+    'context_window',
+  ]);
+  return option && new Set(option.options.map((choice) => choice.value)).size > 1 ? option : null;
 }
 
 export function buildAgentRuntimeSlashCommands(agent: AgentRuntimeCatalog | null | undefined): SlashCommandItem[] {

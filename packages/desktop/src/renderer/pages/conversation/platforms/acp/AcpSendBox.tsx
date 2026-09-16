@@ -5,6 +5,7 @@ import { isSideQuestionSupported } from '@/common/chat/sideQuestion';
 import { parseError, uuid } from '@/common/utils';
 import AgentModeSelector from '@/renderer/components/agent/AgentModeSelector';
 import ContextUsageIndicator from '@/renderer/components/agent/ContextUsageIndicator';
+import { getCurrentConfigOptionLabel } from '@/renderer/components/agent/runtimeSelectorOptions';
 import CommandQueuePanel from '@/renderer/components/chat/CommandQueuePanel';
 import MobileActionSheet, {
   type MobileActionSheetEntry,
@@ -174,6 +175,7 @@ const AcpSendBox: React.FC<{
   });
   const runtimeMode = runtimeConfig.mode;
   const runtimeThoughtLevel = runtimeConfig.thoughtLevel;
+  const runtimeContextWindow = runtimeConfig.contextWindow;
   const handleThoughtLevelSetOption = useCallback(
     async (optionId: string, value: string) => runtimeConfig.setConfigOption(optionId, value),
     [runtimeConfig]
@@ -609,6 +611,34 @@ Please check your local CLI tool authentication status`,
       });
     }
 
+    if (runtimeContextWindow) {
+      const blocked =
+        runtimeConfig.setStatus.state === 'setting' || runtimeConfig.isConfigOptionBlocked(runtimeContextWindow.id);
+      entries.push({
+        key: 'context-window',
+        icon: <Brain theme='outline' size='16' />,
+        label: t('agent.contextWindow.label'),
+        meta: getCurrentConfigOptionLabel(runtimeContextWindow),
+        disabled: blocked,
+        submenu: {
+          title: t('agent.contextWindow.label'),
+          options: runtimeContextWindow.options.map((item) => ({
+            key: item.value,
+            label: item.label,
+            description: item.description ?? undefined,
+            active: runtimeContextWindow.currentValue === item.value,
+          })),
+          onSelect: (value) => {
+            if (blocked || value === runtimeContextWindow.currentValue) return;
+            void runtimeConfig
+              .setConfigOption(runtimeContextWindow.id, value)
+              .then(() => Message.success(t('agent.contextWindow.switchSuccess')))
+              .catch((error) => Message.error(t(configErrorMessageKey(error))));
+          },
+        },
+      });
+    }
+
     if (modeOptions.length > 0) {
       entries.push({
         key: 'permission',
@@ -689,6 +719,8 @@ Please check your local CLI tool authentication status`,
     model_info,
     runtimeMode,
     runtimeThoughtLevel,
+    runtimeContextWindow,
+    runtimeConfig,
     selectModel,
     setContent,
     t,

@@ -8,6 +8,7 @@ import { ipcBridge } from '@/common';
 import type { ManagedAgent } from '@/renderer/utils/model/agentTypes';
 import { MANAGED_AGENTS_SWR_KEY, fetchManagedAgents } from '@/renderer/utils/model/agentTypes';
 import useSWR, { mutate } from 'swr';
+import { ensureConversationRuntime } from '@/renderer/pages/conversation/utils/ensureConversationRuntime';
 
 export type UseManagedAgentsResult = {
   agents: ManagedAgent[];
@@ -22,6 +23,27 @@ export type UseManagedAgentsResult = {
 export async function refreshManagedAgentCatalogAndAssistants(): Promise<ManagedAgent[] | undefined> {
   const [agents] = await Promise.all([mutate<ManagedAgent[]>(MANAGED_AGENTS_SWR_KEY), mutate('assistants.list')]);
   return agents;
+}
+
+/** Refresh custom ACP capabilities without sending a prompt or retaining a conversation. */
+export async function refreshCustomAgentRuntimeCatalog(agent: ManagedAgent): Promise<void> {
+  if (agent.agent_source !== 'custom' || agent.agent_type !== 'acp' || !agent.enabled || agent.status !== 'online')
+    return;
+  // AionCore 0.2.2 probes health but only persists catalogs on the runtime/session path.
+  // A runtime-only probe must not bind an assistant or update its saved preferences.
+  const probe = await ipcBridge.conversation.create.invoke({
+    type: 'acp',
+    name: agent.name,
+    extra: { agent_id: agent.id, agent_source: 'custom', is_health_check: true },
+  });
+  if (!probe?.id) throw new Error('agent_catalog: probe_conversation_missing');
+  try {
+    await ensureConversationRuntime(probe.id);
+  } finally {
+    await ipcBridge.conversation.remove.invoke({ id: probe.id }).then((removed) => {
+      if (!removed) throw new Error(`agent_catalog: probe_cleanup_failed (${probe.id})`);
+    });
+  }
 }
 
 /**

@@ -28,6 +28,8 @@ export type I18nKey =
   | 'agent.config.failed'
   | 'agent.config.setting'
   | 'agent.config.timeout'
+  | 'agent.contextWindow.label'
+  | 'agent.contextWindow.switchSuccess'
   | 'agent.health.autoSwitching'
   | 'agent.health.available'
   | 'agent.health.bestMatch'

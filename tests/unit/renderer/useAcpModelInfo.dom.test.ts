@@ -72,6 +72,17 @@ const buildLegacyModelInfo = (overrides: Partial<AcpModelInfo> = {}): AcpModelIn
   ...overrides,
 });
 
+const buildContextOption = (currentValue = 'default'): AcpConfigOptionDto => ({
+  id: 'context-capacity',
+  category: 'context_window',
+  type: 'select',
+  current_value: currentValue,
+  options: [
+    { value: 'default', name: 'Standard' },
+    { value: 'long_context', name: 'Extended' },
+  ],
+});
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -146,6 +157,78 @@ describe('useAcpModelInfo', () => {
     expect(result.current.model_info?.available_models.map((model) => model.id)).toEqual(['sonnet-4', 'opus-4']);
     expect(result.current.canSwitch).toBe(true);
     expect(ensureRuntimeInvokeMock).toHaveBeenCalledWith({ conversation_id: 'conv-1' });
+  });
+
+  it.each(['absent', 'single'] as const)(
+    'hides context choices when the new model has an %s context option',
+    async (kind) => {
+      ensureRuntimeInvokeMock.mockResolvedValue({
+        recovered: true,
+        config_options: [...buildConfigOptions(), buildContextOption()],
+        runtime: null,
+      });
+      const { result } = renderUseAcpModelInfo({ conversation_id: 'context-model-change', backend: 'copilot' });
+      await waitFor(() => expect(result.current.contextWindow?.currentValue).toBe('default'));
+
+      act(() => {
+        emitStream({
+          type: 'acp_config_option',
+          conversation_id: 'context-model-change',
+          data: {
+            config_options: [
+              ...buildConfigOptions('opus-4'),
+              ...(kind === 'single'
+                ? [{ ...buildContextOption(), options: [{ value: 'default', name: 'Standard' }] }]
+                : []),
+            ],
+          },
+        });
+      });
+
+      expect(result.current.contextWindow).toBeNull();
+      expect(result.current.model_info?.current_model_id).toBe('opus-4');
+    }
+  );
+
+  it('applies the advertised context option through the existing runtime setter', async () => {
+    ensureRuntimeInvokeMock.mockResolvedValue({
+      recovered: true,
+      config_options: [...buildConfigOptions(), buildContextOption()],
+      runtime: null,
+    });
+    setConfigOptionInvokeMock.mockResolvedValue({
+      confirmation: 'observed',
+      config_options: [...buildConfigOptions(), buildContextOption('long_context')],
+    });
+    const { result } = renderUseAcpModelInfo({ conversation_id: 'context-selection', backend: 'copilot' });
+    await waitFor(() => expect(result.current.contextWindow).not.toBeNull());
+
+    await act(async () => {
+      await result.current.setConfigOption('context-capacity', 'long_context');
+    });
+
+    expect(setConfigOptionInvokeMock).toHaveBeenCalledWith({
+      conversation_id: 'context-selection',
+      option_id: 'context-capacity',
+      value: 'long_context',
+    });
+    expect(result.current.contextWindow?.currentValue).toBe('long_context');
+  });
+
+  it('preserves the confirmed context when the setter cannot confirm an update', async () => {
+    ensureRuntimeInvokeMock.mockResolvedValue({
+      recovered: true,
+      config_options: [...buildConfigOptions(), buildContextOption()],
+      runtime: null,
+    });
+    setConfigOptionInvokeMock.mockResolvedValue({ confirmation: 'command_ack', config_options: null });
+    const { result } = renderUseAcpModelInfo({ conversation_id: 'context-failure', backend: 'copilot' });
+    await waitFor(() => expect(result.current.contextWindow?.currentValue).toBe('default'));
+
+    await act(async () => {
+      await expect(result.current.setConfigOption('context-capacity', 'long_context')).rejects.toThrow('command_ack');
+    });
+    expect(result.current.contextWindow?.currentValue).toBe('default');
   });
 
   it('uses an injected config option loader without starting standalone runtime', async () => {

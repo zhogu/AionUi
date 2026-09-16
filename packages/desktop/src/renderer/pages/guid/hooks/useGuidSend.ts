@@ -16,6 +16,8 @@ import { type TFunction } from 'i18next';
 import type { NavigateFunction } from 'react-router-dom';
 import { mutate as swrMutate } from 'swr';
 import { getConversationCreateErrorMessage } from '@/renderer/pages/conversation/utils/conversationCreateError';
+import { ensureConversationRuntime } from '@/renderer/pages/conversation/utils/ensureConversationRuntime';
+import { hasObservedValue } from '@/renderer/hooks/agent/useAcpConfigOptions';
 
 export type GuidSendDeps = {
   // Input state
@@ -34,6 +36,9 @@ export type GuidSendDeps = {
   selectedMode: string;
   selectedAcpModel: string | null;
   selectedThoughtLevelValue?: string;
+  thoughtLevelOptionId?: string;
+  selectedContextWindowValue?: string;
+  contextWindowOptionId?: string;
   current_model: TProviderWithModel | undefined;
 
   guidDisabledBuiltinSkills: string[] | undefined;
@@ -81,6 +86,9 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     selectedMode,
     selectedAcpModel,
     selectedThoughtLevelValue,
+    thoughtLevelOptionId,
+    selectedContextWindowValue,
+    contextWindowOptionId,
     current_model,
     guidDisabledBuiltinSkills,
     guidEnabledSkills,
@@ -252,6 +260,25 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
         return;
       }
 
+      const initialConfig = [
+        { id: thoughtLevelOptionId, value: selectedThoughtLevelValue },
+        { id: contextWindowOptionId, value: selectedContextWindowValue },
+      ].filter((option): option is { id: string; value: string } => Boolean(option.id && option.value));
+      if (initialConfig.length > 0) {
+        // Older cores do not apply thought-level creation overrides. Confirm both before the first prompt.
+        await ensureConversationRuntime(conversation.id);
+        for (const option of initialConfig) {
+          const response = await ipcBridge.acpConversation.setConfigOption.invoke({
+            conversation_id: conversation.id,
+            option_id: option.id,
+            value: option.value,
+          });
+          if (!hasObservedValue(response, option.id, option.value)) {
+            throw new Error(`${option.id}: config_not_observed`);
+          }
+        }
+      }
+
       if (isCustomWorkspace) {
         updateWorkspaceTime(finalWorkspace);
       }
@@ -290,6 +317,9 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     selectedMode,
     selectedAcpModel,
     selectedThoughtLevelValue,
+    thoughtLevelOptionId,
+    selectedContextWindowValue,
+    contextWindowOptionId,
     current_model,
     guidDisabledBuiltinSkills,
     guidEnabledSkills,

@@ -24,25 +24,25 @@ export type RuntimeSelectorModelGroup = { key: string; title: string; models: Ru
 const matchesModelQuery = (model: RuntimeSelectorModel, keyword: string): boolean =>
   (model.label || model.id).toLowerCase().includes(keyword);
 
-export const getCurrentThoughtLevelLabel = (thoughtLevel: AcpDerivedOption | null | undefined): string => {
-  if (!thoughtLevel) return '';
-  return (
-    thoughtLevel.options.find((item) => item.value === thoughtLevel.currentValue)?.label ||
-    thoughtLevel.currentValue ||
-    ''
-  );
+export const getCurrentConfigOptionLabel = (option: AcpDerivedOption | null | undefined): string => {
+  if (!option) return '';
+  return option.options.find((item) => item.value === option.currentValue)?.label || option.currentValue || '';
 };
+
+export const getCurrentThoughtLevelLabel = getCurrentConfigOptionLabel;
 
 export const composeRuntimeSelectorLabel = ({
   modelLabel,
   thoughtLevel,
+  contextWindow,
 }: {
   modelLabel: string;
   thoughtLevel?: AcpDerivedOption | null;
+  contextWindow?: AcpDerivedOption | null;
 }): string => {
-  const thoughtLevelLabel = getCurrentThoughtLevelLabel(thoughtLevel);
-  if (!thoughtLevelLabel) return modelLabel;
-  return `${modelLabel} · ${thoughtLevelLabel}`;
+  return [modelLabel, getCurrentConfigOptionLabel(thoughtLevel), getCurrentConfigOptionLabel(contextWindow)]
+    .filter(Boolean)
+    .join(' · ');
 };
 
 export const isConfigSetting = (setStatus?: AcpConfigSetStatus): boolean => setStatus?.state === 'setting';

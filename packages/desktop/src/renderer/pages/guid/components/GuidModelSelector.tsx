@@ -38,6 +38,8 @@ type GuidModelSelectorProps = {
   setSelectedAcpModel: React.Dispatch<React.SetStateAction<string | null>>;
   thoughtLevelOption?: AgentRuntimeDerivedOption | null;
   onThoughtLevelSelect?: (value: string) => void;
+  contextWindowOption?: AgentRuntimeDerivedOption | null;
+  onContextWindowSelect?: (value: string) => void;
 };
 
 /** Composite id for a provider+model pair, so the shared flat model list can track selection. */
@@ -53,6 +55,8 @@ const GuidModelSelector: React.FC<GuidModelSelectorProps> = ({
   setSelectedAcpModel,
   thoughtLevelOption,
   onThoughtLevelSelect,
+  contextWindowOption,
+  onContextWindowSelect,
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -110,6 +114,9 @@ const GuidModelSelector: React.FC<GuidModelSelectorProps> = ({
   const combinedAcpButtonLabel = composeRuntimeSelectorLabel({
     modelLabel: acpButtonLabel,
     thoughtLevel: normalizedThoughtLevelOption,
+    contextWindow: contextWindowOption
+      ? { ...contextWindowOption, currentValue: contextWindowOption.currentValue ?? null }
+      : null,
   });
 
   if (isGeminiMode) {
@@ -208,7 +215,7 @@ const GuidModelSelector: React.FC<GuidModelSelectorProps> = ({
           trigger='click'
           droplist={
             <Menu selectedKeys={selectedAcpModel ? [selectedAcpModel] : []}>
-              {normalizedThoughtLevelOption ? (
+              {normalizedThoughtLevelOption || contextWindowOption ? (
                 <>
                   {/* Two-level layout: model row on top, thought-level row below;
                       each expands into a left-side submenu. */}
@@ -224,31 +231,54 @@ const GuidModelSelector: React.FC<GuidModelSelectorProps> = ({
                   >
                     {modelListNode}
                   </Menu.SubMenu>
-                  <Menu.SubMenu
-                    key='thought-level'
-                    triggerProps={RUNTIME_SUBMENU_TRIGGER_PROPS}
-                    title={
-                      <RuntimeSelectorSubMenuTitle
-                        label={t('agent.thoughtLevel.label')}
-                        value={getCurrentThoughtLevelLabel(normalizedThoughtLevelOption)}
-                      />
-                    }
-                  >
-                    {normalizedThoughtLevelOption.options.map((item) => (
-                      <Menu.Item
-                        key={item.value}
-                        className={item.value === normalizedThoughtLevelOption.currentValue ? '!bg-2' : ''}
-                        onClick={() => onThoughtLevelSelect?.(item.value)}
-                      >
-                        <RuntimeSelectorCheckedItem
-                          selected={item.value === normalizedThoughtLevelOption.currentValue}
-                          description={item.description}
-                        >
-                          {item.label}
-                        </RuntimeSelectorCheckedItem>
-                      </Menu.Item>
-                    ))}
-                  </Menu.SubMenu>
+                  {[
+                    {
+                      option: normalizedThoughtLevelOption,
+                      key: 'thought-level',
+                      label: t('agent.thoughtLevel.label'),
+                      onSelect: onThoughtLevelSelect,
+                    },
+                    {
+                      option: contextWindowOption,
+                      key: 'context-window',
+                      label: t('agent.contextWindow.label'),
+                      onSelect: onContextWindowSelect,
+                    },
+                  ]
+                    .filter(({ option }) => option && option.options.length > 1)
+                    .map(
+                      ({ option, key, label, onSelect }) =>
+                        option && (
+                          <Menu.SubMenu
+                            key={key}
+                            triggerProps={RUNTIME_SUBMENU_TRIGGER_PROPS}
+                            title={
+                              <RuntimeSelectorSubMenuTitle
+                                label={label}
+                                value={getCurrentThoughtLevelLabel({
+                                  ...option,
+                                  currentValue: option.currentValue ?? null,
+                                })}
+                              />
+                            }
+                          >
+                            {option.options.map((item) => (
+                              <Menu.Item
+                                key={item.value}
+                                className={item.value === option.currentValue ? '!bg-2' : ''}
+                                onClick={() => onSelect?.(item.value)}
+                              >
+                                <RuntimeSelectorCheckedItem
+                                  selected={item.value === option.currentValue}
+                                  description={item.description}
+                                >
+                                  {item.label}
+                                </RuntimeSelectorCheckedItem>
+                              </Menu.Item>
+                            ))}
+                          </Menu.SubMenu>
+                        )
+                    )}
                 </>
               ) : (
                 modelListNode
