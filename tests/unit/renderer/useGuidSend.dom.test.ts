@@ -139,6 +139,29 @@ describe('useGuidSend', () => {
     expect(deps.navigate).not.toHaveBeenCalled();
   });
 
+  it('confirms reasoning before context when the backend ignores creation overrides', async () => {
+    const deps = {
+      ...createDeps(),
+      selectedThoughtLevelValue: 'high',
+      thoughtLevelOptionId: 'reasoning_effort',
+      selectedContextWindowValue: 'long_context',
+      contextWindowOptionId: 'context_window',
+    };
+    setConfigOptionMock.mockImplementation(async ({ option_id, value }) => ({
+      confirmation: 'observed',
+      config_options: [{ id: option_id, current_value: value }],
+    }));
+    const { result } = renderHook(() => useGuidSend(deps));
+    await act(async () => {
+      await result.current.handleSend();
+    });
+    expect(setConfigOptionMock.mock.calls.map(([option]) => [option.option_id, option.value])).toEqual([
+      ['reasoning_effort', 'high'],
+      ['context_window', 'long_context'],
+    ]);
+    expect(ensureRuntimeMock).toHaveBeenCalledTimes(1);
+  });
+
   it('passes selected mode into assistant conversation overrides when creating a preset ACP conversation', async () => {
     const deps = createDeps();
     (deps as any).selectedThoughtLevelValue = 'high';

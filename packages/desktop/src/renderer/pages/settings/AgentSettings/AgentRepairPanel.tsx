@@ -11,6 +11,7 @@ import { acpConversation } from '@/common/adapter/ipcBridge';
 import { formatManagedAgentDiagnosticMessage, type ManagedAgent } from '@/renderer/utils/model/agentTypes';
 import EnvVarEditor, { type EnvVarRow } from './EnvVarEditor';
 import { uuid } from '@/common/utils';
+import { refreshCustomAgentRuntimeCatalog } from '@/renderer/hooks/agent/useManagedAgents';
 
 type AgentRepairPanelProps = {
   agent: ManagedAgent;
@@ -157,6 +158,7 @@ const AgentRepairPanel: React.FC<AgentRepairPanelProps> = ({ agent, onSaved }) =
         env_override: envOverride.length > 0 ? envOverride : undefined,
       });
 
+      await refreshCustomAgentRuntimeCatalog(result);
       showSaveAndTestResult(t, result);
       onSaved();
     } catch (err) {

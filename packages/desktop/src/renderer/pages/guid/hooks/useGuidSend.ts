@@ -36,6 +36,7 @@ export type GuidSendDeps = {
   selectedMode: string;
   selectedAcpModel: string | null;
   selectedThoughtLevelValue?: string;
+  thoughtLevelOptionId?: string;
   selectedContextWindowValue?: string;
   contextWindowOptionId?: string;
   current_model: TProviderWithModel | undefined;
@@ -85,6 +86,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     selectedMode,
     selectedAcpModel,
     selectedThoughtLevelValue,
+    thoughtLevelOptionId,
     selectedContextWindowValue,
     contextWindowOptionId,
     current_model,
@@ -258,16 +260,22 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
         return;
       }
 
-      if (selectedContextWindowValue && contextWindowOptionId) {
-        // Do not hand the first prompt to the conversation until the native tier is confirmed.
+      const initialConfig = [
+        { id: thoughtLevelOptionId, value: selectedThoughtLevelValue },
+        { id: contextWindowOptionId, value: selectedContextWindowValue },
+      ].filter((option): option is { id: string; value: string } => Boolean(option.id && option.value));
+      if (initialConfig.length > 0) {
+        // Older cores do not apply thought-level creation overrides. Confirm both before the first prompt.
         await ensureConversationRuntime(conversation.id);
-        const response = await ipcBridge.acpConversation.setConfigOption.invoke({
-          conversation_id: conversation.id,
-          option_id: contextWindowOptionId,
-          value: selectedContextWindowValue,
-        });
-        if (!hasObservedValue(response, contextWindowOptionId, selectedContextWindowValue)) {
-          throw new Error('context_window: config_not_observed');
+        for (const option of initialConfig) {
+          const response = await ipcBridge.acpConversation.setConfigOption.invoke({
+            conversation_id: conversation.id,
+            option_id: option.id,
+            value: option.value,
+          });
+          if (!hasObservedValue(response, option.id, option.value)) {
+            throw new Error(`${option.id}: config_not_observed`);
+          }
         }
       }
 
@@ -309,6 +317,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     selectedMode,
     selectedAcpModel,
     selectedThoughtLevelValue,
+    thoughtLevelOptionId,
     selectedContextWindowValue,
     contextWindowOptionId,
     current_model,

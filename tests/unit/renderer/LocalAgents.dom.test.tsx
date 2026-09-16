@@ -59,6 +59,7 @@ vi.mock('@arco-design/web-react', async () => {
 const useManagedAgents = vi.fn();
 vi.mock('@renderer/hooks/agent/useManagedAgents', () => ({
   useManagedAgents: () => useManagedAgents(),
+  refreshCustomAgentRuntimeCatalog: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Bridge is only touched by user-action handlers, not on render — stub the

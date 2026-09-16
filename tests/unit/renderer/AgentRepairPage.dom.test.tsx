@@ -32,6 +32,7 @@ vi.mock('react-router-dom', async () => {
 const useManagedAgents = vi.fn();
 vi.mock('@/renderer/hooks/agent/useManagedAgents', () => ({
   useManagedAgents: () => useManagedAgents(),
+  refreshCustomAgentRuntimeCatalog: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/common', () => ({

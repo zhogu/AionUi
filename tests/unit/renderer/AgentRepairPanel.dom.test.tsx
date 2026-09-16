@@ -12,6 +12,11 @@ import { Message } from '@arco-design/web-react';
 import AgentRepairPanel from '@/renderer/pages/settings/AgentSettings/AgentRepairPanel';
 import type { ManagedAgent } from '@/renderer/utils/model/agentTypes';
 import { acpConversation } from '@/common/adapter/ipcBridge';
+import { refreshCustomAgentRuntimeCatalog } from '@/renderer/hooks/agent/useManagedAgents';
+
+vi.mock('@/renderer/hooks/agent/useManagedAgents', () => ({
+  refreshCustomAgentRuntimeCatalog: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock('@/common/adapter/ipcBridge', () => ({
   acpConversation: {
@@ -119,6 +124,9 @@ describe('AgentRepairPanel', () => {
       });
       expect(Message.success).toHaveBeenCalledWith('settings.agentManagement.testConnectionOnline');
       expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(refreshCustomAgentRuntimeCatalog).toHaveBeenCalledWith(
+        expect.objectContaining({ id: mockAgent.id, status: 'online' })
+      );
     });
   });
 
