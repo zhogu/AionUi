@@ -57,9 +57,13 @@ vi.mock('@arco-design/web-react', async () => {
 
 // Controlled management-view data; assert LocalAgents consumes THIS hook.
 const useManagedAgents = vi.fn();
+const { checkAndRefreshCustomAgentRuntimeCatalog } = vi.hoisted(() => ({
+  checkAndRefreshCustomAgentRuntimeCatalog: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('@renderer/hooks/agent/useManagedAgents', () => ({
   useManagedAgents: () => useManagedAgents(),
   refreshCustomAgentRuntimeCatalog: vi.fn().mockResolvedValue(undefined),
+  checkAndRefreshCustomAgentRuntimeCatalog,
 }));
 
 // Bridge is only touched by user-action handlers, not on render — stub the
@@ -89,8 +93,20 @@ vi.mock('@renderer/utils/platform', async () => {
 });
 
 // Keep the test focused on LocalAgents' own logic — stub heavy children.
-vi.mock('@/renderer/components/base/AionModal', () => ({ default: () => null }));
-vi.mock('@renderer/pages/settings/AgentSettings/InlineAgentEditor', () => ({ default: () => null }));
+vi.mock('@/renderer/components/base/AionModal', () => ({
+  default: ({ visible, children }: { visible: boolean; children: React.ReactNode }) =>
+    visible ? <div>{children}</div> : null,
+}));
+vi.mock('@renderer/pages/settings/AgentSettings/InlineAgentEditor', () => ({
+  default: ({ onSave }: { onSave: (draft: unknown) => void }) => (
+    <button
+      type="button"
+      onClick={() => onSave({ name: 'New Adapter', command: '/opt/copilot-acp', args: ['--acp'] })}
+    >
+      save-custom-agent
+    </button>
+  ),
+}));
 vi.mock('@renderer/pages/settings/AgentSettings/AgentHubModal', () => ({ AgentHubModal: () => null }));
 
 import LocalAgents from '@renderer/pages/settings/AgentSettings/LocalAgents';
@@ -149,6 +165,24 @@ const makeAgents = () => [
 ];
 
 describe('LocalAgents', () => {
+  it('checks and persists the runtime catalog immediately after creating a custom agent', async () => {
+    const refreshCatalog = vi.fn().mockResolvedValue(undefined);
+    useManagedAgents.mockReturnValue({ agents: makeAgents(), revalidate: vi.fn(), refreshCatalog });
+    vi.mocked(ipcBridge.acpConversation.createCustomAgent.invoke).mockResolvedValue({
+      id: 'new-adapter',
+    } as Awaited<ReturnType<typeof ipcBridge.acpConversation.createCustomAgent.invoke>>);
+
+    render(<LocalAgents />);
+    fireEvent.click(screen.getByText('settings.agentManagement.addCustomAgent'));
+    fireEvent.click(await screen.findByTestId('btn-add-custom-agent-manual'));
+    fireEvent.click(await screen.findByText('save-custom-agent'));
+
+    await waitFor(() => {
+      expect(checkAndRefreshCustomAgentRuntimeCatalog).toHaveBeenCalledWith('new-adapter');
+      expect(refreshCatalog).toHaveBeenCalled();
+    });
+  });
+
   it('runs the health probe and shows a success toast after an official-agent test connection succeeds', async () => {
     const refreshCatalog = vi.fn().mockResolvedValue(undefined);
     useManagedAgents.mockReturnValue({ agents: makeAgents(), revalidate: vi.fn(), refreshCatalog });
