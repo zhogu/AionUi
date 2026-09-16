@@ -51,7 +51,17 @@ In **Settings → Agents**, add a separate custom agent:
 
 Use the actual `INSTALL_DIR` if overridden. Select this agent in a **new
 conversation**, then select a model. Only models with multiple advertised tiers
-show Default / Long context. The adapter uses the native CLI SDK; it does not
+show Default / Long context. On the welcome page, the model menu now has
+independent **Model**, **Thought level** and **Context window** submenus; the
+phone-browser action sheet offers the same choices. A selected tier is confirmed
+before sending the first prompt.
+
+**Upgrading an existing custom agent:** after installing this package and
+restarting the target service, test that agent again in **Settings → Agents**
+to refresh its cached per-model capabilities, then refresh the browser. Both
+the adapter binary and the frontend must come from this build.
+
+The adapter uses the native CLI SDK; it does not
 replace or automatically reconfigure the built-in Copilot agent. See the packaged
 `copilot-acp-README.md` for protocol and permission limitations; its source-checkout
 Node instructions are unnecessary for this compiled binary.
