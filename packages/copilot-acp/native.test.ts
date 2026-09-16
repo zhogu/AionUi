@@ -103,7 +103,7 @@ describe.skipIf(!enabled)('opt-in native Copilot smoke (new isolated sessions on
       const small = await set('model', single.id);
       expect(small.configOptions.find((option) => option.id === 'context_window')).toMatchObject({
         currentValue: 'default',
-        options: [{ value: 'default', name: 'Default' }],
+        options: contextChoices(single),
       });
       await expect(set('context_window', 'long_context')).rejects.toThrow('Unsupported configuration');
       console.log(JSON.stringify({ proof: 'native-single-tier-clearing', model: single.id, optionCount: 1 }));
@@ -207,6 +207,8 @@ describe.skipIf(!enabled)('opt-in native Copilot smoke (new isolated sessions on
       const thought = buildAgentRuntimeThoughtLevelOption(catalog, selectedModel.value);
       expect(context?.options.map((option) => option.value)).toEqual(['default', 'long_context']);
       expect(thought?.options.length).toBeGreaterThan(1);
+      expect(context?.options[0].label).toMatch(/^Default \([\d,]+ input tokens\)$/);
+      expect(context?.options[1].label).toMatch(/^Long context \([\d,]+ input tokens\)$/);
       await client.setSessionConfigOption({
         sessionId: session.sessionId,
         configId: 'model',

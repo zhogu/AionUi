@@ -23,11 +23,14 @@ export function contextChoices(model) {
   const prices = model?.billing?.tokenPrices;
   const normal = prices?.maxPromptTokens ?? prices?.contextMax;
   const long = prices?.longContext?.maxPromptTokens ?? prices?.longContext?.contextMax;
+  const hasBudget = model?.id !== 'auto' && positive(normal);
+  const choice = (value, name, budget) => ({
+    value,
+    name: hasBudget ? `${name} (${budget.toLocaleString('en-US')} input tokens)` : name,
+  });
   return [
-    { value: 'default', name: 'Default' },
-    ...(model?.id !== 'auto' && positive(normal) && positive(long) && long > normal
-      ? [{ value: 'long_context', name: 'Long context' }]
-      : []),
+    choice('default', 'Default', normal),
+    ...(hasBudget && positive(long) && long > normal ? [choice('long_context', 'Long context', long)] : []),
   ];
 }
 

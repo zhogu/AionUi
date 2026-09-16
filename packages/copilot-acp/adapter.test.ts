@@ -116,6 +116,18 @@ describe('confirmed context configuration', () => {
     expect(f.connection.sessionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ update: { sessionUpdate: 'config_option_update', configOptions: small.configOptions } })
     );
+    const restored = await f.set('model', 'tiered');
+    expect(restored.configOptions.find((option) => option.id === 'context_window')).toMatchObject({
+      currentValue: 'default',
+      options: [
+        { value: 'default', name: 'Default (272,000 input tokens)' },
+        { value: 'long_context', name: 'Long context (922,000 input tokens)' },
+      ],
+    });
+    const changedAgain = await f.set('context_window', 'long_context');
+    expect(changedAgain.configOptions.find((option) => option.id === 'context_window')?.currentValue).toBe(
+      'long_context'
+    );
   });
 
   it('does not accept echoed input when the authoritative state disagrees', async () => {
@@ -171,6 +183,39 @@ describe('confirmed context configuration', () => {
     ).toHaveLength(1);
     expect(contextChoices({ ...models[1], id: 'auto' })).toHaveLength(1);
     expect(contextChoices({ ...models[1], id: 'future-model' })).toHaveLength(2);
+  });
+
+  it('labels each tier with its exact native input budget, not the overall model maximum', () => {
+    expect(
+      contextChoices({
+        ...models[1],
+        capabilities: { limits: { max_context_window_tokens: 1178000, max_output_tokens: 128000 } },
+      })
+    ).toEqual([
+      { value: 'default', name: 'Default (272,000 input tokens)' },
+      { value: 'long_context', name: 'Long context (922,000 input tokens)' },
+    ]);
+    expect(
+      contextChoices({
+        id: 'future',
+        billing: { tokenPrices: { contextMax: 256000, longContext: { contextMax: 1000000 } } },
+      })
+    ).toEqual([
+      { value: 'default', name: 'Default (256,000 input tokens)' },
+      { value: 'long_context', name: 'Long context (1,000,000 input tokens)' },
+    ]);
+  });
+
+  it('does not invent lengths for Auto, missing budgets or invalid metadata', () => {
+    for (const model of [
+      undefined,
+      models[0],
+      { ...models[1], id: 'auto' },
+      { id: 'unknown', billing: { tokenPrices: { maxPromptTokens: 0, longContext: { maxPromptTokens: 900000 } } } },
+      { id: 'unknown', billing: { tokenPrices: { maxPromptTokens: Infinity } } },
+    ]) {
+      expect(contextChoices(model)).toEqual([{ value: 'default', name: 'Default' }]);
+    }
   });
 });
 
