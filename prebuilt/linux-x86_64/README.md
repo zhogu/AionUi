@@ -49,15 +49,18 @@ In **Settings → Agents**, add a separate custom agent:
 | Arguments   | `--acp`                                                                           |
 | Environment | `AIONUI_COPILOT_CLI=/absolute/path/to/native/copilot`, if not on the service PATH |
 
-Use the actual `INSTALL_DIR` if overridden. Select this agent in a **new
+Use the actual `INSTALL_DIR` if overridden. Save the agent, then click
+**Test Connection on its saved agent card** to load its model capabilities.
+The connection test inside the unsaved editor only checks the executable.
+Select this agent in a **new
 conversation**, then select a model. Only models with multiple advertised tiers
 show Default / Long context. On the welcome page, the model menu now has
-independent **Model**, **Thought level** and **Context window** submenus; the
+independent **Model**, **Thinking Level** and **Context window** submenus; the
 phone-browser action sheet offers the same choices. A selected tier is confirmed
 before sending the first prompt.
 
 **Upgrading an existing custom agent:** after installing this package and
-restarting the target service, test that agent again in **Settings → Agents**
+restarting the target service, test that saved agent again in **Settings → Agents**
 to refresh its cached per-model capabilities, then refresh the browser. Both
 the adapter binary and the frontend must come from this build.
 
