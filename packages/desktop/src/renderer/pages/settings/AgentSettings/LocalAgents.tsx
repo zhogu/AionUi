@@ -14,7 +14,11 @@ import {
 import AionModal from '@/renderer/components/base/AionModal';
 import { AionSearchInput } from '@/renderer/components/base';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
-import { refreshCustomAgentRuntimeCatalog, useManagedAgents } from '@/renderer/hooks/agent/useManagedAgents';
+import {
+  checkAndRefreshCustomAgentRuntimeCatalog,
+  refreshCustomAgentRuntimeCatalog,
+  useManagedAgents,
+} from '@/renderer/hooks/agent/useManagedAgents';
 import { openExternalUrl } from '@/renderer/utils/platform';
 import { Button, Message, Typography } from '@arco-design/web-react';
 import TalkToButlerButton from '@/renderer/components/base/TalkToButlerButton';
@@ -72,10 +76,14 @@ const LocalAgents: React.FC = () => {
         advanced: draft.advanced,
       };
       try {
-        if (editingAgent) {
-          await ipcBridge.acpConversation.updateCustomAgent.invoke({ id: editingAgent.id, ...body });
-        } else {
-          await ipcBridge.acpConversation.createCustomAgent.invoke(body);
+        const savedAgent = editingAgent
+          ? await ipcBridge.acpConversation.updateCustomAgent.invoke({ id: editingAgent.id, ...body })
+          : await ipcBridge.acpConversation.createCustomAgent.invoke(body);
+        try {
+          await checkAndRefreshCustomAgentRuntimeCatalog(savedAgent.id);
+        } catch (error) {
+          console.error('refresh saved custom agent catalog failed:', error);
+          Message.warning(parseError(error));
         }
         await refreshCatalog();
         setEditorVisible(false);
