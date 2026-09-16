@@ -75,9 +75,11 @@ Do not point `AIONUI_COPILOT_CLI` back at this adapter.
   prompt budgets are required. No model-name allowlist is used. Auto and
   single-tier models explicitly publish one default option, clearing stale
   choices in AionCore’s ID-merging config cache.
-- Labels are **Default / Long context**, not misleading total token counts.
-  Native metadata distinguishes prompt budget from maximum output tokens;
-  long context can also have different pricing.
+- Labels show **Default / Long context** with each tier's native input budget,
+  for example **Default (272,000 input tokens)**. These are input/prompt token
+  limits, not character counts or a total including the output allowance.
+  Unknown budgets (including Auto) are not guessed from a model's maximum limits.
+  Long context can also have different pricing.
 - Model, context and reasoning changes use `session.model.switchTo`, followed by
   authoritative `session.model.getCurrent`. Changes are idle-only; overlapping
   prompts/configuration requests fail. Successful changes return the complete
