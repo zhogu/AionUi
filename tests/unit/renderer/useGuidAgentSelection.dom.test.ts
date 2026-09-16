@@ -106,8 +106,12 @@ describe('useGuidAssistantSelection', () => {
       'long_context',
     ]);
     expect(result.current.currentContextWindowOption?.options.map((option) => option.label)).toEqual([
-      'Default (272,000 input tokens)',
-      'Long context (872,000 input tokens)',
+      'Default (272K)',
+      'Long context (872K)',
+    ]);
+    expect(result.current.currentContextWindowOption?.options.map((option) => option.description)).toEqual([
+      '272,000 input tokens',
+      '872,000 input tokens',
     ]);
     act(() => {
       result.current.setSelectedThoughtLevelValue('max');

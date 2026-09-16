@@ -120,8 +120,8 @@ describe('confirmed context configuration', () => {
     expect(restored.configOptions.find((option) => option.id === 'context_window')).toMatchObject({
       currentValue: 'default',
       options: [
-        { value: 'default', name: 'Default (272,000 input tokens)' },
-        { value: 'long_context', name: 'Long context (922,000 input tokens)' },
+        { value: 'default', name: 'Default (272K)', description: '272,000 input tokens' },
+        { value: 'long_context', name: 'Long context (922K)', description: '922,000 input tokens' },
       ],
     });
     const changedAgain = await f.set('context_window', 'long_context');
@@ -185,15 +185,15 @@ describe('confirmed context configuration', () => {
     expect(contextChoices({ ...models[1], id: 'future-model' })).toHaveLength(2);
   });
 
-  it('labels each tier with its exact native input budget, not the overall model maximum', () => {
+  it('labels each native input budget compactly and preserves the exact count in its description', () => {
     expect(
       contextChoices({
         ...models[1],
         capabilities: { limits: { max_context_window_tokens: 1178000, max_output_tokens: 128000 } },
       })
     ).toEqual([
-      { value: 'default', name: 'Default (272,000 input tokens)' },
-      { value: 'long_context', name: 'Long context (922,000 input tokens)' },
+      { value: 'default', name: 'Default (272K)', description: '272,000 input tokens' },
+      { value: 'long_context', name: 'Long context (922K)', description: '922,000 input tokens' },
     ]);
     expect(
       contextChoices({
@@ -201,8 +201,23 @@ describe('confirmed context configuration', () => {
         billing: { tokenPrices: { contextMax: 256000, longContext: { contextMax: 1000000 } } },
       })
     ).toEqual([
-      { value: 'default', name: 'Default (256,000 input tokens)' },
-      { value: 'long_context', name: 'Long context (1,000,000 input tokens)' },
+      { value: 'default', name: 'Default (256K)', description: '256,000 input tokens' },
+      { value: 'long_context', name: 'Long context (1M)', description: '1,000,000 input tokens' },
+    ]);
+  });
+
+  it.each([
+    [999, '999', '999'],
+    [1000, '1K', '1,000'],
+    [1500, '1.5K', '1,500'],
+    [872000, '872K', '872,000'],
+    [999999, '1M', '999,999'],
+    [1000000, '1M', '1,000,000'],
+    [1050000, '1.05M', '1,050,000'],
+    [1178123, '1.18M', '1,178,123'],
+  ])('formats %s tokens as %s without losing the exact budget', (budget, compact, exact) => {
+    expect(contextChoices({ id: 'future', billing: { tokenPrices: { maxPromptTokens: budget } } })).toEqual([
+      { value: 'default', name: `Default (${compact})`, description: `${exact} input tokens` },
     ]);
   });
 
