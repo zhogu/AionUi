@@ -94,6 +94,8 @@ type GuidActionRowProps = {
   // Thought level (mobile action sheet; only present for ACP agents)
   thoughtLevelOption?: AgentRuntimeDerivedOption | null;
   onThoughtLevelSelect?: (value: string) => void;
+  contextWindowOption?: AgentRuntimeDerivedOption | null;
+  onContextWindowSelect?: (value: string) => void;
 
   // Agent mode
   modeBackend?: string;
@@ -131,6 +133,8 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
   setSelectedAcpModel,
   thoughtLevelOption,
   onThoughtLevelSelect,
+  contextWindowOption,
+  onContextWindowSelect,
   modeBackend,
   selectedMode,
   dynamicModes = [],
@@ -275,24 +279,39 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
     }
 
     // Thought level (ACP agents only).
-    if (thoughtLevelOption && thoughtLevelOption.options.length > 0 && onThoughtLevelSelect) {
-      const currentValue = thoughtLevelOption.currentValue;
-      entries.push({
+    for (const { option, key, label, onSelect } of [
+      {
+        option: thoughtLevelOption,
         key: 'thought-level',
-        icon: <Brain theme='outline' size='16' />,
         label: t('agent.thoughtLevel.label'),
-        meta: thoughtLevelOption.options.find((o) => o.value === currentValue)?.label || currentValue || '',
-        submenu: {
-          title: t('agent.thoughtLevel.label'),
-          options: thoughtLevelOption.options.map((o) => ({
-            key: o.value,
-            label: o.label,
-            description: o.description ?? undefined,
-            active: o.value === currentValue,
-          })),
-          onSelect: (value) => onThoughtLevelSelect(value),
-        },
-      });
+        onSelect: onThoughtLevelSelect,
+      },
+      {
+        option: contextWindowOption,
+        key: 'context-window',
+        label: t('agent.contextWindow.label'),
+        onSelect: onContextWindowSelect,
+      },
+    ]) {
+      if (option && option.options.length > 1 && onSelect) {
+        const currentValue = option.currentValue;
+        entries.push({
+          key,
+          icon: <Brain theme='outline' size='16' />,
+          label,
+          meta: option.options.find((o) => o.value === currentValue)?.label || currentValue || '',
+          submenu: {
+            title: label,
+            options: option.options.map((o) => ({
+              key: o.value,
+              label: o.label,
+              description: o.description ?? undefined,
+              active: o.value === currentValue,
+            })),
+            onSelect,
+          },
+        });
+      }
     }
 
     // Permission / agent mode.
@@ -411,6 +430,8 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
     selectedAcpModel,
     setSelectedAcpModel,
     thoughtLevelOption,
+    contextWindowOption,
+    onContextWindowSelect,
     onThoughtLevelSelect,
     dynamicModes,
     selectedMode,

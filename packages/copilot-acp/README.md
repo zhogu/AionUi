@@ -30,6 +30,18 @@ not on the service's `PATH`. Save and test the custom agent, then choose it for 
 when that model advertises multiple tiers. No build or additional dependency is
 needed. The AionUI frontend must include this PR's selector changes.
 
+On the welcome page, open the model menu: **Model**, **Thought level**, and
+**Context window** are separate submenus. Phone browsers expose the same
+choices in the action sheet. Context and reasoning choices follow the selected
+model, not the model used by an earlier session. A requested context tier is
+confirmed before the first prompt is sent; a configuration failure leaves the
+prompt unsent and reports an error.
+
+After upgrading an existing adapter installation, **test the custom agent again**
+in Settings to refresh its cached model capabilities, then refresh the welcome
+page. Both the frontend and adapter must be updated: older adapters do not
+publish the per-model `_meta["aionui/model-config"]` used by the welcome page.
+
 This is a separate custom ACP agent, not an in-place upgrade of the built-in
 Copilot entry. Do **not** edit the built-in entry's `command_override` while
 existing work is running. Existing native Copilot agents, conversations and

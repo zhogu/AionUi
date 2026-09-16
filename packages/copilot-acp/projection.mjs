@@ -38,6 +38,29 @@ export function reasoningChoices(model) {
     : [];
 }
 
+/** Publish each model's capabilities for clients selecting before a session exists. */
+export function modelConfigOptions(model) {
+  return [
+    {
+      id: 'context_window',
+      type: 'select',
+      category: 'context_window',
+      currentValue: 'default',
+      options: contextChoices(model),
+    },
+    {
+      id: 'reasoning_effort',
+      type: 'select',
+      category: 'thought_level',
+      currentValue: 'default',
+      options: [
+        { value: 'default', name: 'Default' },
+        ...reasoningChoices(model).map((value) => ({ value, name: value })),
+      ],
+    },
+  ];
+}
+
 export function configOptions(session, models) {
   const model = models.find((entry) => entry.id === session.model.modelId);
   const select = (id, name, category, currentValue, options) => ({
@@ -60,7 +83,11 @@ export function configOptions(session, models) {
       'Model',
       'model',
       session.model.modelId,
-      models.map((entry) => ({ value: entry.id, name: entry.name ?? entry.id }))
+      models.map((entry) => ({
+        value: entry.id,
+        name: entry.name ?? entry.id,
+        _meta: { 'aionui/model-config': modelConfigOptions(entry) },
+      }))
     ),
     // Always publish a single default on unsupported models: AionCore merges options by ID.
     select(

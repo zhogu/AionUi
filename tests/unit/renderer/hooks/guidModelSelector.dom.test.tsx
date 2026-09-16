@@ -116,6 +116,47 @@ describe('GuidModelSelector', () => {
     ],
   };
 
+  it('shows independent context and reasoning choices before the first conversation', () => {
+    const onContextWindowSelect = vi.fn();
+    const onThoughtLevelSelect = vi.fn();
+    const props = {
+      isGeminiMode: false,
+      modelList: [],
+      current_model: undefined,
+      setCurrentModel: vi.fn(),
+      currentAcpCachedModelInfo: {
+        current_model_id: 'auto',
+        current_model_label: 'Auto',
+        available_models: [{ id: 'gpt-6-astra', label: 'GPT-6 Astra' }],
+      },
+      selectedAcpModel: 'gpt-6-astra',
+      setSelectedAcpModel: vi.fn(),
+      thoughtLevelOption,
+      onThoughtLevelSelect,
+      onContextWindowSelect,
+    };
+    const { rerender } = render(
+      <GuidModelSelector
+        {...props}
+        contextWindowOption={{
+          id: 'context_window',
+          category: 'context_window',
+          currentValue: 'default',
+          options: [
+            { value: 'default', label: 'Default' },
+            { value: 'long_context', label: 'Long context' },
+          ],
+        }}
+      />
+    );
+    fireEvent.click(screen.getByText('Long context'));
+    fireEvent.click(screen.getByText('High'));
+    expect(onContextWindowSelect).toHaveBeenCalledWith('long_context');
+    expect(onThoughtLevelSelect).toHaveBeenCalledWith('high');
+    rerender(<GuidModelSelector {...props} contextWindowOption={null} />);
+    expect(screen.queryByText('Long context')).not.toBeInTheDocument();
+  });
+
   it('shows ACP model descriptions in option tooltips', () => {
     render(
       <GuidModelSelector

@@ -9,6 +9,10 @@ import { CopilotAdapter } from './adapter.mjs';
 import { SessionOwnership } from './ownership.mjs';
 import { contextChoices } from './projection.mjs';
 import { SdkTransport } from './transport.mjs';
+import {
+  buildAgentRuntimeContextWindowOption,
+  buildAgentRuntimeThoughtLevelOption,
+} from '../desktop/src/renderer/utils/model/agentRuntimeCatalog';
 
 const enabled = process.env.COPILOT_ACP_NATIVE_TEST === '1';
 const cwd = process.env.COPILOT_ACP_NATIVE_CWD;
@@ -192,6 +196,39 @@ describe.skipIf(!enabled)('opt-in native Copilot smoke (new isolated sessions on
       expect(initialized.agentInfo?.name).toBe('aionui-copilot-sdk-acp');
       const session = await client.newSession({ cwd, mcpServers: [] });
       expect(session.configOptions?.find((option) => option.id === 'context_window')?.category).toBe('context_window');
+      const catalog = { config_options: session.configOptions };
+      const modelChoices = session.configOptions?.find((option) => option.id === 'model');
+      if (!modelChoices || !('options' in modelChoices)) throw new Error('Missing native model choices');
+      const selectedModel = modelChoices.options.find(
+        (option) => 'value' in option && buildAgentRuntimeContextWindowOption(catalog, option.value)
+      );
+      if (!selectedModel || !('value' in selectedModel)) throw new Error('Missing tiered model metadata');
+      const context = buildAgentRuntimeContextWindowOption(catalog, selectedModel.value);
+      const thought = buildAgentRuntimeThoughtLevelOption(catalog, selectedModel.value);
+      expect(context?.options.map((option) => option.value)).toEqual(['default', 'long_context']);
+      expect(thought?.options.length).toBeGreaterThan(1);
+      await client.setSessionConfigOption({
+        sessionId: session.sessionId,
+        configId: 'model',
+        value: selectedModel.value,
+      });
+      const effort =
+        thought?.options.find((option) => option.value === 'high') ??
+        thought?.options.find((option) => option.value !== 'default');
+      if (!effort) throw new Error('Missing reasoning choices');
+      const changed = await client.setSessionConfigOption({
+        sessionId: session.sessionId,
+        configId: 'reasoning_effort',
+        value: effort.value,
+      });
+      expect(changed.configOptions.find((option) => option.id === 'reasoning_effort')?.currentValue).toBe(effort.value);
+      console.log(
+        JSON.stringify({
+          proof: 'homepage-model-metadata-and-reasoning',
+          model: selectedModel.value,
+          effort: effort.value,
+        })
+      );
       await client.unstable_closeSession({ sessionId: session.sessionId });
       child.stdin.end();
       const timeout = new Promise((_, reject) =>
