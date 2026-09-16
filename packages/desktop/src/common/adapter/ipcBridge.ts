@@ -1820,6 +1820,7 @@ export interface ICreateConversationParams {
     conversation_overrides?: {
       model?: string;
       permission?: string;
+      thought_level?: string;
       skill_ids?: string[];
       disabled_builtin_skill_ids?: string[];
       mcp_ids?: string[];
@@ -1864,6 +1865,9 @@ export interface ICreateConversationParams {
     };
     /** Legacy marker for pre-provider-probe health-check conversations. */
     is_health_check?: boolean;
+    /** Runtime-only catalog probes. Normal conversations bind through assistant.id. */
+    agent_id?: string;
+    agent_source?: 'custom';
     remote_agent_id?: string;
     extra_skill_paths?: string[];
     team_id?: string;

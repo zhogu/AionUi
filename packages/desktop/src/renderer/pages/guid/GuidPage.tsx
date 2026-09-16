@@ -262,6 +262,7 @@ const GuidPage: React.FC = () => {
     selectedMode: agentSelection.selectedMode,
     selectedAcpModel: agentSelection.selectedAcpModel,
     selectedThoughtLevelValue: agentSelection.selectedThoughtLevelValue,
+    thoughtLevelOptionId: agentSelection.currentThoughtLevelOption?.id,
     selectedContextWindowValue: agentSelection.selectedContextWindowValue,
     contextWindowOptionId: agentSelection.currentContextWindowOption?.id,
     current_model: modelSelection.current_model,

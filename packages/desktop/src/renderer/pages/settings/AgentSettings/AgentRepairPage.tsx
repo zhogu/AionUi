@@ -10,7 +10,7 @@ import { ArrowLeft, Connection } from '@icon-park/react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ipcBridge } from '@/common';
-import { useManagedAgents } from '@/renderer/hooks/agent/useManagedAgents';
+import { refreshCustomAgentRuntimeCatalog, useManagedAgents } from '@/renderer/hooks/agent/useManagedAgents';
 import { formatManagedAgentDiagnosticMessage } from '@/renderer/utils/model/agentTypes';
 import AgentRepairPanel from './AgentRepairPanel';
 import { BoundAssistantList, getBoundAssistants, useAssistantsForAgents } from './BoundAssistants';
@@ -38,6 +38,7 @@ const AgentRepairPage: React.FC = () => {
     try {
       setIsTesting(true);
       const result = await ipcBridge.acpConversation.checkManagedAgentHealthById.invoke({ id: agent.id });
+      await refreshCustomAgentRuntimeCatalog(result);
       await refreshCatalog();
       switch (result.status) {
         case 'online':

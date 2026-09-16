@@ -22,6 +22,11 @@ vi.mock('swr', () => ({
 
 vi.mock('@/common', () => ({
   ipcBridge: {
+    conversation: {
+      create: { invoke: vi.fn() },
+      ensureRuntime: { invoke: vi.fn() },
+      remove: { invoke: vi.fn() },
+    },
     acpConversation: {
       refreshCustomAgents: { invoke: vi.fn().mockResolvedValue(undefined) },
     },
@@ -33,7 +38,12 @@ vi.mock('@/renderer/utils/model/agentTypes', () => ({
   fetchManagedAgents: vi.fn(),
 }));
 
-import { getManagedAgents, useManagedAgents } from '@/renderer/hooks/agent/useManagedAgents';
+import {
+  getManagedAgents,
+  useManagedAgents,
+  refreshCustomAgentRuntimeCatalog,
+} from '@/renderer/hooks/agent/useManagedAgents';
+import type { ManagedAgent } from '@/renderer/utils/model/agentTypes';
 import { ipcBridge } from '@/common';
 import useSWR, { mutate } from 'swr';
 import { fetchManagedAgents } from '@/renderer/utils/model/agentTypes';
@@ -41,6 +51,52 @@ import { fetchManagedAgents } from '@/renderer/utils/model/agentTypes';
 describe('useManagedAgents', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(ipcBridge.conversation.create.invoke).mockResolvedValue({ id: 'probe' } as Awaited<
+      ReturnType<typeof ipcBridge.conversation.create.invoke>
+    >);
+    vi.mocked(ipcBridge.conversation.ensureRuntime.invoke)
+      .mockReset()
+      .mockResolvedValue({} as Awaited<ReturnType<typeof ipcBridge.conversation.ensureRuntime.invoke>>);
+    vi.mocked(ipcBridge.conversation.remove.invoke).mockReset().mockResolvedValue(true);
+  });
+
+  const customAgent: ManagedAgent = {
+    id: 'adapter',
+    name: 'Adapter',
+    agent_type: 'acp',
+    agent_source: 'custom',
+    enabled: true,
+    available: true,
+    status: 'online',
+  };
+
+  it('refreshes custom model catalogs with an empty disposable runtime, never a prompt', async () => {
+    await refreshCustomAgentRuntimeCatalog(customAgent);
+    expect(ipcBridge.conversation.create.invoke).toHaveBeenCalledWith({
+      type: 'acp',
+      name: 'Adapter',
+      extra: { agent_id: 'adapter', agent_source: 'custom', is_health_check: true },
+    });
+    expect(ipcBridge.conversation.ensureRuntime.invoke).toHaveBeenCalledWith({ conversation_id: 'probe' });
+    expect(ipcBridge.conversation.remove.invoke).toHaveBeenCalledWith({ id: 'probe' });
+  });
+
+  it('cleans the disposable conversation even when runtime initialization fails', async () => {
+    vi.mocked(ipcBridge.conversation.ensureRuntime.invoke).mockRejectedValueOnce(new Error('ACP unavailable'));
+    await expect(refreshCustomAgentRuntimeCatalog(customAgent)).rejects.toThrow('ACP unavailable');
+    expect(ipcBridge.conversation.remove.invoke).toHaveBeenCalledWith({ id: 'probe' });
+  });
+
+  it('reports cleanup failure rather than a successful connection refresh', async () => {
+    vi.mocked(ipcBridge.conversation.remove.invoke).mockResolvedValueOnce(false);
+    await expect(refreshCustomAgentRuntimeCatalog(customAgent)).rejects.toThrow('probe_cleanup_failed');
+  });
+
+  it('does not open runtimes for disabled, offline or builtin agents', async () => {
+    for (const override of [{ enabled: false }, { status: 'offline' as const }, { agent_source: 'builtin' as const }]) {
+      await refreshCustomAgentRuntimeCatalog({ ...customAgent, ...override });
+    }
+    expect(ipcBridge.conversation.create.invoke).not.toHaveBeenCalled();
   });
 
   it('subscribes to the management SWR key with the managed fetcher', () => {
