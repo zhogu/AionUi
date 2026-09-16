@@ -49,8 +49,8 @@ fi
 
 tar -xzf "$ARCHIVE_PATH" -C "$TEMP_DIR"
 STAGED_DIR="${TEMP_DIR}/aionui-web"
-if [[ ! -x "${STAGED_DIR}/aionui-web" ]]; then
-  echo 'Invalid package: aionui-web executable is missing.' >&2
+if [[ ! -x "${STAGED_DIR}/aionui-web" || ! -x "${STAGED_DIR}/copilot-acp" ]]; then
+  echo 'Invalid package: aionui-web or optional copilot-acp executable is missing.' >&2
   exit 1
 fi
 
@@ -74,3 +74,4 @@ if [[ -n "$backup_dir" ]]; then
   echo "Previous installation backed up at ${backup_dir}"
 fi
 echo "Start with: ${BIN_DIR}/aionui-web start"
+echo "Optional custom ACP agent command: ${INSTALL_DIR}/copilot-acp (arguments: --acp)"
