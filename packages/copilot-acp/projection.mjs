@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 export const record = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const textContent = (text) => ({ type: 'content', content: { type: 'text', text } });
 const positive = (value) => Number.isFinite(value) && value > 0;
+const compactTokenCount = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 });
 
 /**
  * Only metadata with two distinct, positive prompt budgets establishes tier support.
@@ -26,7 +27,8 @@ export function contextChoices(model) {
   const hasBudget = model?.id !== 'auto' && positive(normal);
   const choice = (value, name, budget) => ({
     value,
-    name: hasBudget ? `${name} (${budget.toLocaleString('en-US')} input tokens)` : name,
+    name: hasBudget ? `${name} (${compactTokenCount.format(budget)})` : name,
+    ...(hasBudget ? { description: `${budget.toLocaleString('en-US')} input tokens` } : {}),
   });
   return [
     choice('default', 'Default', normal),

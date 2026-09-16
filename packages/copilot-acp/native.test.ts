@@ -207,8 +207,10 @@ describe.skipIf(!enabled)('opt-in native Copilot smoke (new isolated sessions on
       const thought = buildAgentRuntimeThoughtLevelOption(catalog, selectedModel.value);
       expect(context?.options.map((option) => option.value)).toEqual(['default', 'long_context']);
       expect(thought?.options.length).toBeGreaterThan(1);
-      expect(context?.options[0].label).toMatch(/^Default \([\d,]+ input tokens\)$/);
-      expect(context?.options[1].label).toMatch(/^Long context \([\d,]+ input tokens\)$/);
+      expect(context?.options[0].label).toMatch(/^Default \([\d.]+[KM]\)$/);
+      expect(context?.options[1].label).toMatch(/^Long context \([\d.]+[KM]\)$/);
+      expect(context?.options[0].description).toMatch(/^[\d,]+ input tokens$/);
+      expect(context?.options[1].description).toMatch(/^[\d,]+ input tokens$/);
       await client.setSessionConfigOption({
         sessionId: session.sessionId,
         configId: 'model',
