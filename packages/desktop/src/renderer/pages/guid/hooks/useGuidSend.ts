@@ -16,6 +16,8 @@ import { type TFunction } from 'i18next';
 import type { NavigateFunction } from 'react-router-dom';
 import { mutate as swrMutate } from 'swr';
 import { getConversationCreateErrorMessage } from '@/renderer/pages/conversation/utils/conversationCreateError';
+import { ensureConversationRuntime } from '@/renderer/pages/conversation/utils/ensureConversationRuntime';
+import { hasObservedValue } from '@/renderer/hooks/agent/useAcpConfigOptions';
 
 export type GuidSendDeps = {
   // Input state
@@ -34,6 +36,8 @@ export type GuidSendDeps = {
   selectedMode: string;
   selectedAcpModel: string | null;
   selectedThoughtLevelValue?: string;
+  selectedContextWindowValue?: string;
+  contextWindowOptionId?: string;
   current_model: TProviderWithModel | undefined;
 
   guidDisabledBuiltinSkills: string[] | undefined;
@@ -81,6 +85,8 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     selectedMode,
     selectedAcpModel,
     selectedThoughtLevelValue,
+    selectedContextWindowValue,
+    contextWindowOptionId,
     current_model,
     guidDisabledBuiltinSkills,
     guidEnabledSkills,
@@ -252,6 +258,19 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
         return;
       }
 
+      if (selectedContextWindowValue && contextWindowOptionId) {
+        // Do not hand the first prompt to the conversation until the native tier is confirmed.
+        await ensureConversationRuntime(conversation.id);
+        const response = await ipcBridge.acpConversation.setConfigOption.invoke({
+          conversation_id: conversation.id,
+          option_id: contextWindowOptionId,
+          value: selectedContextWindowValue,
+        });
+        if (!hasObservedValue(response, contextWindowOptionId, selectedContextWindowValue)) {
+          throw new Error('context_window: config_not_observed');
+        }
+      }
+
       if (isCustomWorkspace) {
         updateWorkspaceTime(finalWorkspace);
       }
@@ -290,6 +309,8 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     selectedMode,
     selectedAcpModel,
     selectedThoughtLevelValue,
+    selectedContextWindowValue,
+    contextWindowOptionId,
     current_model,
     guidDisabledBuiltinSkills,
     guidEnabledSkills,

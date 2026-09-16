@@ -8,6 +8,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Assistant } from '@/common/types/agent/assistantTypes';
 import type { ManagedAgent } from '@/renderer/utils/model/agentTypes';
+import { configOptions } from '../../../packages/copilot-acp/projection.mjs';
 import {
   buildAgentRuntimeModeState,
   buildAgentRuntimeModelInfo,
@@ -70,6 +71,49 @@ describe('useGuidAssistantSelection', () => {
         deletable: false,
       } satisfies Assistant,
     ];
+  });
+
+  it('derives homepage tiers and reasoning from the selected model, not the cached Auto session', async () => {
+    const options = configOptions({ model: { modelId: 'auto' }, mode: 'interactive', permission: 'manual' }, [
+      { id: 'auto' },
+      {
+        id: 'gpt-6-astra',
+        supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        billing: { tokenPrices: { maxPromptTokens: 272000, longContext: { maxPromptTokens: 872000 } } },
+      },
+      { id: 'small', supportedReasoningEfforts: ['low'] },
+    ]);
+    mockManagedAgents = [
+      {
+        id: 'agent-claude',
+        config_options: options,
+      } as ManagedAgent,
+    ];
+    const { result } = renderHook(() => useGuidAssistantSelection({ resetAssistant: false }));
+    await waitFor(() => expect(result.current.selectedAssistantId).toBe('assistant-claude'));
+    expect(result.current.currentContextWindowOption).toBeNull();
+    act(() => result.current.setSelectedAcpModel('gpt-6-astra'));
+    expect(result.current.currentThoughtLevelOption?.options.map((option) => option.value)).toEqual([
+      'default',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
+    expect(result.current.currentContextWindowOption?.options.map((option) => option.value)).toEqual([
+      'default',
+      'long_context',
+    ]);
+    act(() => {
+      result.current.setSelectedThoughtLevelValue('max');
+      result.current.setSelectedContextWindowValue('long_context');
+    });
+    expect(result.current.selectedContextWindowValue).toBe('long_context');
+    act(() => result.current.setSelectedAcpModel('small'));
+    expect(result.current.currentContextWindowOption).toBeNull();
+    expect(result.current.selectedContextWindowValue).toBe('');
+    expect(result.current.currentThoughtLevelOption?.currentValue).toBe('default');
   });
 
   it('derives availability and model info from assistant catalog data', async () => {

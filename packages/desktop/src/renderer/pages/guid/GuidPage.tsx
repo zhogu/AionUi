@@ -262,6 +262,8 @@ const GuidPage: React.FC = () => {
     selectedMode: agentSelection.selectedMode,
     selectedAcpModel: agentSelection.selectedAcpModel,
     selectedThoughtLevelValue: agentSelection.selectedThoughtLevelValue,
+    selectedContextWindowValue: agentSelection.selectedContextWindowValue,
+    contextWindowOptionId: agentSelection.currentContextWindowOption?.id,
     current_model: modelSelection.current_model,
 
     guidDisabledBuiltinSkills,
@@ -600,6 +602,8 @@ const GuidPage: React.FC = () => {
       setSelectedAcpModel={setGuidSelectedAcpModel}
       thoughtLevelOption={isGeminiMode ? null : agentSelection.currentThoughtLevelOption}
       onThoughtLevelSelect={setGuidSelectedThoughtLevel}
+      contextWindowOption={isGeminiMode ? null : agentSelection.currentContextWindowOption}
+      onContextWindowSelect={agentSelection.setSelectedContextWindowValue}
     />
   );
 
@@ -627,6 +631,8 @@ const GuidPage: React.FC = () => {
       setSelectedAcpModel={setGuidSelectedAcpModel}
       thoughtLevelOption={isGeminiMode ? null : agentSelection.currentThoughtLevelOption}
       onThoughtLevelSelect={setGuidSelectedThoughtLevel}
+      contextWindowOption={isGeminiMode ? null : agentSelection.currentContextWindowOption}
+      onContextWindowSelect={agentSelection.setSelectedContextWindowValue}
       modeBackend={agentSelection.selectedAssistantBackend}
       selectedMode={agentSelection.selectedMode}
       dynamicModes={agentSelection.currentAgentModeOptions}

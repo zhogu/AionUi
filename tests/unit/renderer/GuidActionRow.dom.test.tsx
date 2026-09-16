@@ -10,6 +10,7 @@ import React from 'react';
 import GuidActionRow from '@/renderer/pages/guid/components/GuidActionRow';
 import type { IMcpServer } from '@/common/config/storage';
 import { ipcBridge } from '@/common';
+import type { MobileActionSheetEntry } from '@/renderer/components/chat/MobileActionSheet/types';
 
 const environment = vi.hoisted(() => ({ isMobile: false, isDesktop: true }));
 
@@ -36,12 +37,19 @@ vi.mock('@/renderer/components/agent/AgentModeSelector', () => ({
 }));
 
 vi.mock('@/renderer/components/chat/MobileActionSheet', () => ({
-  default: ({ entries }: { entries: Array<{ key: string; label: string; onClick?: () => void }> }) => (
+  default: ({ entries }: { entries: MobileActionSheetEntry[] }) => (
     <div data-testid='mobile-action-sheet'>
       {entries.map((entry) => (
-        <button key={entry.key} type='button' data-testid={entry.key} onClick={entry.onClick}>
-          {entry.label}
-        </button>
+        <div key={entry.key}>
+          <button type='button' data-testid={entry.key} onClick={entry.onClick}>
+            {entry.label}
+          </button>
+          {entry.submenu?.options.map((option) => (
+            <button key={option.key} onClick={() => entry.submenu?.onSelect(option.key)}>
+              {option.label}
+            </button>
+          ))}
+        </div>
       ))}
     </div>
   ),
@@ -184,6 +192,40 @@ describe('GuidActionRow skill/MCP submenu search', () => {
     vi.clearAllMocks();
     environment.isMobile = false;
     environment.isDesktop = true;
+  });
+
+  it('offers and selects context independently from reasoning in the mobile homepage sheet', () => {
+    environment.isMobile = true;
+    const onContextWindowSelect = vi.fn();
+    const onThoughtLevelSelect = vi.fn();
+    renderActionRow({
+      allSkills: [],
+      mcpServers: [],
+      contextWindowOption: {
+        id: 'context_window',
+        category: 'context_window',
+        currentValue: 'default',
+        options: [
+          { value: 'default', label: 'Default' },
+          { value: 'long_context', label: 'Long context' },
+        ],
+      },
+      thoughtLevelOption: {
+        id: 'reasoning_effort',
+        category: 'thought_level',
+        currentValue: 'low',
+        options: [
+          { value: 'low', label: 'Low' },
+          { value: 'high', label: 'High' },
+        ],
+      },
+      onContextWindowSelect,
+      onThoughtLevelSelect,
+    });
+    fireEvent.click(screen.getByText('Long context'));
+    fireEvent.click(screen.getByText('High'));
+    expect(onContextWindowSelect).toHaveBeenCalledWith('long_context');
+    expect(onThoughtLevelSelect).toHaveBeenCalledWith('high');
   });
 
   it('offers both host files and device upload in the mobile WebUI action sheet', () => {
