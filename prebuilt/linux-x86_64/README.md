@@ -60,9 +60,11 @@ phone-browser action sheet offers the same choices. A selected tier is confirmed
 before sending the first prompt.
 
 Each tier displays its native **input token budget**, for example
-`Default (272,000 input tokens)` / `Long context (872,000 input tokens)` for
+`Default (272K)` / `Long context (872K)` for
 the currently advertised GPT-6 Astra metadata. Values vary by model and CLI
 metadata; these are not character counts or total input-plus-output limits.
+K means 1,000 and M means 1,000,000 (for example `1.05M`). The compact
+label rounds to at most two decimal places; option descriptions show the exact count.
 
 **Upgrading an existing custom agent:** after installing this package and
 restarting the target service, test that saved agent again in **Settings → Agents**
