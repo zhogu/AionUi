@@ -15,8 +15,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
+let swrData: ManagedAgent[] = [];
+
 vi.mock('swr', () => ({
-  default: vi.fn(() => ({ data: [], error: null, isLoading: false })),
+  default: vi.fn(() => ({ data: swrData, error: null, isLoading: false })),
   mutate: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -29,6 +31,7 @@ vi.mock('@/common', () => ({
     },
     acpConversation: {
       refreshCustomAgents: { invoke: vi.fn().mockResolvedValue(undefined) },
+      checkManagedAgentHealthById: { invoke: vi.fn() },
     },
   },
 }));
@@ -41,7 +44,9 @@ vi.mock('@/renderer/utils/model/agentTypes', () => ({
 import {
   getManagedAgents,
   useManagedAgents,
+  useManagedAgentRuntimeCatalog,
   refreshCustomAgentRuntimeCatalog,
+  checkAndRefreshCustomAgentRuntimeCatalog,
 } from '@/renderer/hooks/agent/useManagedAgents';
 import type { ManagedAgent } from '@/renderer/utils/model/agentTypes';
 import { ipcBridge } from '@/common';
@@ -51,6 +56,8 @@ import { fetchManagedAgents } from '@/renderer/utils/model/agentTypes';
 describe('useManagedAgents', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    swrData = [];
+    (useSWR as any).mockImplementation(() => ({ data: swrData, error: null, isLoading: false }));
     vi.mocked(ipcBridge.conversation.create.invoke).mockResolvedValue({ id: 'probe' } as Awaited<
       ReturnType<typeof ipcBridge.conversation.create.invoke>
     >);
@@ -99,6 +106,29 @@ describe('useManagedAgents', () => {
     expect(ipcBridge.conversation.create.invoke).not.toHaveBeenCalled();
   });
 
+  it('checks a saved custom agent before persisting its runtime catalog', async () => {
+    vi.mocked(ipcBridge.acpConversation.checkManagedAgentHealthById.invoke).mockResolvedValue(customAgent);
+
+    await expect(checkAndRefreshCustomAgentRuntimeCatalog(customAgent.id)).resolves.toEqual(customAgent);
+
+    expect(ipcBridge.acpConversation.checkManagedAgentHealthById.invoke).toHaveBeenCalledWith({
+      id: customAgent.id,
+    });
+    expect(ipcBridge.conversation.ensureRuntime.invoke).toHaveBeenCalledWith({ conversation_id: 'probe' });
+  });
+
+  it('does not create a catalog runtime when the saved custom agent is offline', async () => {
+    vi.mocked(ipcBridge.acpConversation.checkManagedAgentHealthById.invoke).mockResolvedValue({
+      ...customAgent,
+      status: 'offline',
+      last_check_error_message: 'sign in required',
+    });
+
+    await expect(checkAndRefreshCustomAgentRuntimeCatalog(customAgent.id)).rejects.toThrow('sign in required');
+
+    expect(ipcBridge.conversation.create.invoke).not.toHaveBeenCalled();
+  });
+
   it('subscribes to the management SWR key with the managed fetcher', () => {
     (useSWR as any).mockReturnValue({ data: [], error: null, isLoading: false });
 
@@ -116,6 +146,35 @@ describe('useManagedAgents', () => {
     const { result } = renderHook(() => useManagedAgents());
 
     expect(result.current.agents).toEqual(agents);
+  });
+
+  it('automatically refreshes stale bundled Copilot adapter metadata once', async () => {
+    const staleAdapter = {
+      ...customAgent,
+      id: 'stale-bundled-adapter',
+      command: '/home/test/.local/share/aionui-web/copilot-acp',
+      config_options: [
+        {
+          id: 'model',
+          category: 'model',
+          options: [{ value: 'gpt-6-astra', name: 'GPT-6 Astra' }],
+        },
+      ],
+    };
+    swrData = [staleAdapter];
+    vi.mocked(ipcBridge.acpConversation.checkManagedAgentHealthById.invoke).mockResolvedValue(staleAdapter);
+
+    renderHook(() => useManagedAgentRuntimeCatalog());
+
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(ipcBridge.acpConversation.checkManagedAgentHealthById.invoke).toHaveBeenCalledWith({
+          id: staleAdapter.id,
+        });
+        expect(mutate).toHaveBeenCalledWith('agents.managed');
+        expect(mutate).toHaveBeenCalledWith('assistants.list');
+      });
+    });
   });
 
   it('falls back to an empty list when SWR has no data yet', () => {

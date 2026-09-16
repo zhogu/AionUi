@@ -9,6 +9,7 @@ import type { ManagedAgent } from '@/renderer/utils/model/agentTypes';
 import { MANAGED_AGENTS_SWR_KEY, fetchManagedAgents } from '@/renderer/utils/model/agentTypes';
 import useSWR, { mutate } from 'swr';
 import { ensureConversationRuntime } from '@/renderer/pages/conversation/utils/ensureConversationRuntime';
+import { useEffect } from 'react';
 
 export type UseManagedAgentsResult = {
   agents: ManagedAgent[];
@@ -45,6 +46,42 @@ export async function refreshCustomAgentRuntimeCatalog(agent: ManagedAgent): Pro
     });
   }
 }
+
+export async function checkAndRefreshCustomAgentRuntimeCatalog(agentId: string): Promise<ManagedAgent> {
+  const agent = await ipcBridge.acpConversation.checkManagedAgentHealthById.invoke({ id: agentId });
+  if (agent.status !== 'online') {
+    throw new Error(agent.last_check_error_message || `agent_catalog: agent_not_online (${agent.id})`);
+  }
+  await refreshCustomAgentRuntimeCatalog(agent);
+  return agent;
+}
+
+function isBundledCopilotAdapter(agent: ManagedAgent): boolean {
+  return (
+    agent.agent_source === 'custom' &&
+    agent.agent_type === 'acp' &&
+    /(^|[/\\])copilot-acp(?:\.exe)?$/i.test(agent.command?.trim() ?? '')
+  );
+}
+
+function hasModelCapabilityMetadata(agent: ManagedAgent): boolean {
+  const options = Array.isArray(agent.config_options) ? agent.config_options : [];
+  const model = options.find((option) => {
+    if (!option || typeof option !== 'object') return false;
+    const candidate = option as Record<string, unknown>;
+    return candidate.id === 'model' || candidate.category === 'model';
+  }) as Record<string, unknown> | undefined;
+  const choices = Array.isArray(model?.options) ? model.options : [];
+  return choices.some((choice) => {
+    if (!choice || typeof choice !== 'object') return false;
+    const meta = (choice as Record<string, unknown>)._meta;
+    return (
+      !!meta && typeof meta === 'object' && Array.isArray((meta as Record<string, unknown>)['aionui/model-config'])
+    );
+  });
+}
+
+const automaticCatalogRefreshes = new Set<string>();
 
 /**
  * Hook for the Agent settings management surface only. Reads the dedicated
@@ -88,6 +125,23 @@ export const useManagedAgents = (): UseManagedAgentsResult => {
  */
 export const useManagedAgentRuntimeCatalog = (): ManagedAgent[] => {
   const { data } = useSWR<ManagedAgent[]>(MANAGED_AGENTS_SWR_KEY, fetchManagedAgents);
+  useEffect(() => {
+    for (const agent of data ?? []) {
+      if (
+        !isBundledCopilotAdapter(agent) ||
+        hasModelCapabilityMetadata(agent) ||
+        automaticCatalogRefreshes.has(agent.id)
+      ) {
+        continue;
+      }
+      automaticCatalogRefreshes.add(agent.id);
+      void checkAndRefreshCustomAgentRuntimeCatalog(agent.id)
+        .then(() => refreshManagedAgentCatalogAndAssistants())
+        .catch((error) => {
+          console.error(`[agent_catalog] Automatic Copilot adapter refresh failed (${agent.id}):`, error);
+        });
+    }
+  }, [data]);
   return data ?? [];
 };
 
