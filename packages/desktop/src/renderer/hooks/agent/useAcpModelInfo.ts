@@ -35,6 +35,7 @@ export type UseAcpModelInfoResult = {
   isSetting: boolean;
   selectModel: (model_id: string) => void;
   thoughtLevel: AcpDerivedOption | null;
+  contextWindow: AcpDerivedOption | null;
   setStatus: AcpConfigSetStatus;
   setConfigOption: (optionId: string, value: string) => Promise<AcpConfigOptionDto[]>;
   isConfigOptionBlocked: (optionId: string) => boolean;
@@ -83,7 +84,7 @@ export const useAcpModelInfo = ({
     configOptionsPort,
     enabled,
   });
-  const { model, thoughtLevel, setStatus, setConfigOption, isLoading } = runtimeConfig;
+  const { model, thoughtLevel, contextWindow, setStatus, setConfigOption, isLoading } = runtimeConfig;
   const isConfigOptionBlocked = runtimeConfig.isConfigOptionBlocked ?? (() => false);
   const [legacyModelInfo, setLegacyModelInfo] = useState<AcpModelInfo | null>(null);
 
@@ -169,6 +170,7 @@ export const useAcpModelInfo = ({
     isSetting: setStatus.state === 'setting' && setStatus.optionId === model?.id,
     selectModel,
     thoughtLevel,
+    contextWindow,
     setStatus,
     setConfigOption,
     isConfigOptionBlocked,

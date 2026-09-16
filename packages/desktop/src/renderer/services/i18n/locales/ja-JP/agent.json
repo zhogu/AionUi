@@ -40,6 +40,10 @@
     "busy": "別の設定を適用中です。後でもう一度お試しください。",
     "failed": "設定の適用に失敗しました。以前の状態を表示しています。"
   },
+  "contextWindow": {
+    "label": "コンテキスト長",
+    "switchSuccess": "コンテキスト長を切り替えました"
+  },
   "thoughtLevel": {
     "label": "思考レベル",
     "switchSuccess": "思考レベルを切り替えました",

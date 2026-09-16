@@ -5,7 +5,11 @@
  */
 
 import { useAcpModelInfo } from '@/renderer/hooks/agent/useAcpModelInfo';
-import { classifyConfigSetError, type AcpConfigOptionsPort } from '@/renderer/hooks/agent/useAcpConfigOptions';
+import {
+  classifyConfigSetError,
+  type AcpConfigOptionsPort,
+  type AcpDerivedOption,
+} from '@/renderer/hooks/agent/useAcpConfigOptions';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
 import { getModelDisplayLabel } from '@/renderer/utils/model/agentLogo';
 import { iconColors } from '@/renderer/styles/colors';
@@ -16,7 +20,7 @@ import { useTranslation } from 'react-i18next';
 import RuntimeSelectorPill, { RuntimeSelectorLoadingIndicator } from './RuntimeSelectorPill';
 import {
   composeRuntimeSelectorLabel,
-  getCurrentThoughtLevelLabel,
+  getCurrentConfigOptionLabel,
   isConfigSetting,
   RUNTIME_SUBMENU_TRIGGER_PROPS,
   RuntimeSelectorCheckedItem,
@@ -90,6 +94,7 @@ const AcpModelSelector: React.FC<{
     isSetting,
     selectModel,
     thoughtLevel,
+    contextWindow,
     setStatus,
     setConfigOption,
     isConfigOptionBlocked = () => false,
@@ -125,25 +130,23 @@ const AcpModelSelector: React.FC<{
     defaultModelLabel,
     fallbackLabel: t('conversation.welcome.useCliModel'),
   });
-  const combinedLabel = composeRuntimeSelectorLabel({ modelLabel: display_label, thoughtLevel });
+  const combinedLabel = composeRuntimeSelectorLabel({ modelLabel: display_label, thoughtLevel, contextWindow });
   const isRuntimeSetting = isConfigSetting(setStatus);
-  const handleThoughtLevelSelect = useCallback(
-    async (value: string) => {
-      if (
-        !thoughtLevel ||
-        value === thoughtLevel.currentValue ||
-        isRuntimeSetting ||
-        isConfigOptionBlocked(thoughtLevel.id)
-      )
-        return;
+  const handleOptionSelect = useCallback(
+    async (
+      option: AcpDerivedOption,
+      value: string,
+      successKey: 'agent.thoughtLevel.switchSuccess' | 'agent.contextWindow.switchSuccess'
+    ) => {
+      if (value === option.currentValue || isRuntimeSetting || isConfigOptionBlocked(option.id)) return;
       try {
-        await setConfigOption(thoughtLevel.id, value);
-        Message.success(t('agent.thoughtLevel.switchSuccess'));
+        await setConfigOption(option.id, value);
+        Message.success(t(successKey));
       } catch (error) {
         Message.error(t(configErrorMessageKey(error)));
       }
     },
-    [isConfigOptionBlocked, isRuntimeSetting, setConfigOption, thoughtLevel, t]
+    [isConfigOptionBlocked, isRuntimeSetting, setConfigOption, t]
   );
   const tooltipContent = combinedLabel;
 
@@ -213,7 +216,7 @@ const AcpModelSelector: React.FC<{
     return renderReadonlyPill(t('conversation.welcome.useCliModel'), t('conversation.welcome.modelSwitchNotSupported'));
   }
 
-  if (!canSwitch) {
+  if (!canSwitch && !contextWindow) {
     return renderReadonlyPill(combinedLabel, tooltipContent);
   }
 
@@ -225,59 +228,67 @@ const AcpModelSelector: React.FC<{
       {...(isMobileHeaderCompact ? { getPopupContainer: () => document.body } : {})}
       droplist={
         <Menu>
-          {thoughtLevel ? (
+          {thoughtLevel || contextWindow ? (
             <>
-              {/* Two-level layout: first level shows model + thought-level rows;
-                  each expands into a left-side submenu with the full option list. */}
-              <Menu.SubMenu
-                key='model'
-                triggerProps={RUNTIME_SUBMENU_TRIGGER_PROPS}
-                title={
-                  <RuntimeSelectorSubMenuTitle
-                    label={t('common.model', { defaultValue: 'Model' })}
-                    value={display_label}
+              {canSwitch && (
+                <Menu.SubMenu
+                  key='model'
+                  triggerProps={RUNTIME_SUBMENU_TRIGGER_PROPS}
+                  title={
+                    <RuntimeSelectorSubMenuTitle
+                      label={t('common.model', { defaultValue: 'Model' })}
+                      value={display_label}
+                    />
+                  }
+                >
+                  <RuntimeSelectorModelList
+                    models={model_info.available_models}
+                    currentModelId={model_info.current_model_id}
+                    disabled={isRuntimeSetting || isConfigOptionBlocked('model')}
+                    onSelect={selectModel}
                   />
-                }
-              >
-                <RuntimeSelectorModelList
-                  models={model_info.available_models}
-                  currentModelId={model_info.current_model_id}
-                  disabled={isRuntimeSetting || isConfigOptionBlocked('model')}
-                  onSelect={selectModel}
-                />
-              </Menu.SubMenu>
-              <Menu.SubMenu
-                key='thought-level'
-                triggerProps={RUNTIME_SUBMENU_TRIGGER_PROPS}
-                title={
-                  <RuntimeSelectorSubMenuTitle
-                    label={t('agent.thoughtLevel.label')}
-                    value={getCurrentThoughtLevelLabel(thoughtLevel)}
-                  />
-                }
-              >
-                {thoughtLevel.options.map((item) => (
-                  <Menu.Item
-                    key={item.value}
-                    className={item.value === thoughtLevel.currentValue ? 'bg-2!' : ''}
-                    onClick={() => {
-                      if (!isRuntimeSetting && !isConfigOptionBlocked(thoughtLevel.id)) {
-                        void handleThoughtLevelSelect(item.value);
-                      }
-                    }}
+                </Menu.SubMenu>
+              )}
+              {(
+                [
+                  { option: thoughtLevel, key: 'thoughtLevel' },
+                  { option: contextWindow, key: 'contextWindow' },
+                ] as const
+              ).map(({ option, key }) =>
+                option ? (
+                  <Menu.SubMenu
+                    key={key}
+                    triggerProps={RUNTIME_SUBMENU_TRIGGER_PROPS}
+                    title={
+                      <RuntimeSelectorSubMenuTitle
+                        label={t(`agent.${key}.label`)}
+                        value={getCurrentConfigOptionLabel(option)}
+                      />
+                    }
                   >
-                    <RuntimeSelectorCheckedItem
-                      selected={item.value === thoughtLevel.currentValue}
-                      description={item.description}
-                    >
-                      {item.label}
-                    </RuntimeSelectorCheckedItem>
-                  </Menu.Item>
-                ))}
-              </Menu.SubMenu>
+                    {option.options.map((item) => (
+                      <Menu.Item
+                        key={item.value}
+                        className={item.value === option.currentValue ? 'bg-2!' : ''}
+                        disabled={isRuntimeSetting || isConfigOptionBlocked(option.id)}
+                        onClick={() => {
+                          void handleOptionSelect(option, item.value, `agent.${key}.switchSuccess`);
+                        }}
+                      >
+                        <RuntimeSelectorCheckedItem
+                          selected={item.value === option.currentValue}
+                          description={item.description}
+                        >
+                          {item.label}
+                        </RuntimeSelectorCheckedItem>
+                      </Menu.Item>
+                    ))}
+                  </Menu.SubMenu>
+                ) : null
+              )}
             </>
           ) : (
-            /* No thought level: the dropdown is the model list directly. */
+            /* No additional runtime options: show the model list directly. */
             <RuntimeSelectorModelList
               models={model_info.available_models}
               currentModelId={model_info.current_model_id}

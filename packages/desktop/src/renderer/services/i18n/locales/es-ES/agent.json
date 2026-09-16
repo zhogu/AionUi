@@ -40,6 +40,10 @@
     "busy": "Se está aplicando otra configuración. Intenta más tarde.",
     "failed": "Error al aplicar la configuración. Se muestra el estado anterior."
   },
+  "contextWindow": {
+    "label": "Ventana de contexto",
+    "switchSuccess": "Ventana de contexto cambiada"
+  },
   "thoughtLevel": {
     "label": "Nivel de razonamiento",
     "switchSuccess": "Nivel de razonamiento cambiado",

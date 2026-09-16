@@ -7,7 +7,9 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
+import { Message } from '@arco-design/web-react';
 import { BackendHttpError } from '@/common/adapter/httpBridge';
+import type { MobileActionSheetEntry } from '@/renderer/components/chat/MobileActionSheet';
 import AcpSendBox from '@/renderer/pages/conversation/platforms/acp/AcpSendBox';
 import type { UseAcpMessageReturn } from '@/renderer/pages/conversation/platforms/acp/useAcpMessage';
 import type { TeamSendBoxRuntime } from '@/renderer/pages/team/components/teamSendRuntime';
@@ -45,12 +47,7 @@ const {
   sendBoxPropsSpy: vi.fn(),
   isMobileMock: { current: false },
   mobileActionSheetEntries: {
-    current: [] as Array<{
-      key: string;
-      submenu?: {
-        onSelect?: (value: string) => void;
-      };
-    }>,
+    current: [] as MobileActionSheetEntry[],
   },
   runtimeViewMock: {
     hydrated: true,
@@ -178,16 +175,7 @@ vi.mock('@/renderer/components/chat/CommandQueuePanel', () => ({
   },
 }));
 vi.mock('@/renderer/components/chat/MobileActionSheet', () => ({
-  default: ({
-    entries,
-  }: {
-    entries?: Array<{
-      key: string;
-      submenu?: {
-        onSelect?: (value: string) => void;
-      };
-    }>;
-  }) => {
+  default: ({ entries }: { entries?: MobileActionSheetEntry[] }) => {
     mobileActionSheetEntries.current = entries ?? [];
     return null;
   },
@@ -358,8 +346,10 @@ describe('AcpSendBox', () => {
       mode: null,
       model: null,
       thoughtLevel: null,
+      contextWindow: null,
       reload: vi.fn(),
       setConfigOption: vi.fn(),
+      isConfigOptionBlocked: () => false,
     });
   });
 
@@ -667,6 +657,79 @@ describe('AcpSendBox', () => {
       expect(setConfigOption).toHaveBeenCalledWith('reasoning_effort', 'high');
     });
   });
+
+  it('exposes only the runtime context choices in the mobile sheet and submits the selected value', async () => {
+    isMobileMock.current = true;
+    const setConfigOption = vi.fn().mockResolvedValue([]);
+    useAcpConfigOptionsMock.mockReturnValue({
+      mode: null,
+      thoughtLevel: null,
+      contextWindow: {
+        id: 'context-capacity',
+        currentValue: 'default',
+        options: [
+          { value: 'default', label: 'Standard' },
+          { value: 'long_context', label: 'Extended' },
+        ],
+      },
+      setStatus: { state: 'idle' },
+      isConfigOptionBlocked: () => false,
+      setConfigOption,
+    });
+
+    render(<AcpSendBox conversation_id='conv-1' backend='copilot' messageState={makeMessageState()} />);
+    const entry = mobileActionSheetEntries.current.find((item) => item.key === 'context-window');
+
+    expect(entry?.meta).toBe('Standard');
+    expect(entry?.submenu?.options.map((item) => [item.key, item.active])).toEqual([
+      ['default', true],
+      ['long_context', false],
+    ]);
+    await act(async () => entry?.submenu?.onSelect('long_context'));
+    expect(setConfigOption).toHaveBeenCalledWith('context-capacity', 'long_context');
+  });
+
+  it('hides context selection on mobile when the runtime has no context choices', () => {
+    isMobileMock.current = true;
+    render(<AcpSendBox conversation_id='conv-1' backend='copilot' messageState={makeMessageState()} />);
+
+    expect(mobileActionSheetEntries.current.some((entry) => entry.key === 'context-window')).toBe(false);
+  });
+
+  it.each(['busy', 'blocked', 'failure'] as const)(
+    'handles a %s mobile context update without false success',
+    async (state) => {
+      isMobileMock.current = true;
+      const setConfigOption = vi.fn().mockRejectedValue(new Error('command_ack'));
+      useAcpConfigOptionsMock.mockReturnValue({
+        mode: null,
+        thoughtLevel: null,
+        contextWindow: {
+          id: 'context-capacity',
+          currentValue: 'default',
+          options: [
+            { value: 'default', label: 'Standard' },
+            { value: 'long_context', label: 'Extended' },
+          ],
+        },
+        setStatus:
+          state === 'busy' ? { state: 'setting', optionId: 'model', requestedValue: 'other' } : { state: 'idle' },
+        isConfigOptionBlocked: () => state === 'blocked',
+        setConfigOption,
+      });
+      render(<AcpSendBox conversation_id='conv-1' backend='copilot' messageState={makeMessageState()} />);
+
+      await act(async () =>
+        mobileActionSheetEntries.current
+          .find((entry) => entry.key === 'context-window')
+          ?.submenu?.onSelect('long_context')
+      );
+
+      expect(setConfigOption).toHaveBeenCalledTimes(state === 'failure' ? 1 : 0);
+      expect(Message.success).not.toHaveBeenCalled();
+      expect(Message.error).toHaveBeenCalledTimes(state === 'failure' ? 1 : 0);
+    }
+  );
 
   it('does not apply runtime thought level when observed confirmation fails', async () => {
     isMobileMock.current = true;

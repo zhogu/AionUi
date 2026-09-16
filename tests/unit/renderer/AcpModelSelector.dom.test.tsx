@@ -25,8 +25,10 @@ type MockAcpModelInfoResult = {
   isSetting: boolean;
   selectModel: (modelId: string) => void;
   thoughtLevel: AcpDerivedOption | null;
+  contextWindow: AcpDerivedOption | null;
   setStatus: AcpConfigSetStatus;
   setConfigOption: (optionId: string, value: string) => Promise<unknown>;
+  isConfigOptionBlocked?: (optionId: string) => boolean;
 };
 
 const modelInfo: AcpModelInfo = {
@@ -48,6 +50,16 @@ const thoughtLevel: AcpDerivedOption = {
   ],
 };
 
+const contextWindow: AcpDerivedOption = {
+  id: 'context-capacity',
+  category: 'context_window',
+  currentValue: 'default',
+  options: [
+    { value: 'default', label: 'Standard', description: 'Standard context' },
+    { value: 'long_context', label: 'Extended', description: 'Extended context' },
+  ],
+};
+
 const makeResult = (overrides: Partial<MockAcpModelInfoResult> = {}): MockAcpModelInfoResult => ({
   model_info: modelInfo,
   isRuntimeReady: true,
@@ -56,6 +68,7 @@ const makeResult = (overrides: Partial<MockAcpModelInfoResult> = {}): MockAcpMod
   isSetting: false,
   selectModel: vi.fn(),
   thoughtLevel,
+  contextWindow: null,
   setStatus: { state: 'idle' },
   setConfigOption: vi.fn().mockResolvedValue(undefined),
   ...overrides,
@@ -97,6 +110,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: { defaultValue?: string }) => {
       if (key === 'agent.thoughtLevel.label') return 'Thinking Level';
+      if (key === 'agent.contextWindow.label') return 'Context window';
       if (key === 'agent.thoughtLevel.switchSuccess') return 'agent.thoughtLevel.switchSuccess';
       if (key === 'agent.config.commandAck') return 'agent.config.commandAck';
       if (key === 'common.model') return 'Model';
@@ -189,6 +203,96 @@ describe('AcpModelSelector runtime options', () => {
     render(<AcpModelSelector conversation_id='conversation-1' backend='codex' />);
 
     expect(screen.getByTestId('acp-model-selector')).toHaveTextContent('GPT-5.2 · High');
+  });
+
+  it('shows context choices independently of thought level and preserves the agent option ID', async () => {
+    const setConfigOption = vi.fn().mockResolvedValue([]);
+    useAcpModelInfoMock.mockReturnValue(makeResult({ contextWindow, thoughtLevel: null, setConfigOption }));
+
+    render(<AcpModelSelector conversation_id='conversation-1' backend='copilot' />);
+
+    expect(screen.getByTestId('acp-model-selector')).toHaveTextContent('GPT-5.2 · Standard');
+    expect(screen.getAllByTestId('submenu-title')[1]).toHaveTextContent('Context window');
+    fireEvent.click(screen.getByText('Extended'));
+    await waitFor(() => expect(setConfigOption).toHaveBeenCalledWith('context-capacity', 'long_context'));
+  });
+
+  it('keeps model, reasoning, and context selections separate in the dropdown', () => {
+    useAcpModelInfoMock.mockReturnValue(makeResult({ contextWindow }));
+
+    render(<AcpModelSelector conversation_id='conversation-1' backend='copilot' />);
+
+    expect(screen.getByTestId('acp-model-selector')).toHaveTextContent('GPT-5.2 · High · Standard');
+    const contextBody = screen.getAllByTestId('submenu-body')[2];
+    expect(within(contextBody).getByText('Standard').closest('[role="menuitem"]')).toHaveTextContent('✓');
+    expect(within(contextBody).getByText('Extended').closest('[data-tooltip-content]')).toHaveAttribute(
+      'data-tooltip-content',
+      'Extended context'
+    );
+  });
+
+  it('allows context selection even when the model itself is not switchable', async () => {
+    const setConfigOption = vi.fn().mockResolvedValue([]);
+    useAcpModelInfoMock.mockReturnValue(
+      makeResult({ contextWindow, thoughtLevel: null, canSwitch: false, setConfigOption })
+    );
+
+    render(<AcpModelSelector conversation_id='conversation-1' backend='copilot' />);
+    expect(screen.getAllByTestId('submenu-title')).toHaveLength(1);
+    fireEvent.click(screen.getByText('Extended'));
+    await waitFor(() => expect(setConfigOption).toHaveBeenCalledWith('context-capacity', 'long_context'));
+  });
+
+  it('removes the context submenu when switching to a model without context choices', () => {
+    useAcpModelInfoMock.mockReturnValue(makeResult({ contextWindow }));
+    const { rerender } = render(<AcpModelSelector conversation_id='conversation-1' backend='copilot' />);
+    expect(screen.getByText('Context window')).toBeInTheDocument();
+
+    useAcpModelInfoMock.mockReturnValue(makeResult({ contextWindow: null }));
+    rerender(<AcpModelSelector conversation_id='conversation-1' backend='copilot' />);
+
+    expect(screen.queryByText('Context window')).not.toBeInTheDocument();
+    expect(screen.getByTestId('acp-model-selector')).not.toHaveTextContent('Standard');
+  });
+
+  it('reports a context selection failure without claiming success or changing the confirmed label', async () => {
+    const setConfigOption = vi.fn().mockRejectedValue(new Error('command_ack'));
+    useAcpModelInfoMock.mockReturnValue(makeResult({ contextWindow, setConfigOption }));
+
+    render(<AcpModelSelector conversation_id='conversation-1' backend='copilot' />);
+    fireEvent.click(screen.getByText('Extended'));
+
+    await waitFor(() => expect(messageErrorMock).toHaveBeenCalledWith('agent.config.commandAck'));
+    expect(messageSuccessMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId('acp-model-selector')).toHaveTextContent('Standard');
+  });
+
+  it.each(['setting', 'blocked'] as const)('does not submit a context selection while %s', (state) => {
+    const setConfigOption = vi.fn();
+    useAcpModelInfoMock.mockReturnValue(
+      makeResult({
+        contextWindow,
+        setConfigOption,
+        setStatus:
+          state === 'setting' ? { state: 'setting', optionId: 'model', requestedValue: 'other' } : { state: 'idle' },
+        isConfigOptionBlocked: (id) => state === 'blocked' && id === contextWindow.id,
+      })
+    );
+
+    render(<AcpModelSelector conversation_id='conversation-1' backend='copilot' />);
+    fireEvent.click(screen.getByText('Extended'));
+
+    expect(setConfigOption).not.toHaveBeenCalled();
+  });
+
+  it('does not resubmit the currently selected context window', () => {
+    const setConfigOption = vi.fn();
+    useAcpModelInfoMock.mockReturnValue(makeResult({ contextWindow, setConfigOption }));
+
+    render(<AcpModelSelector conversation_id='conversation-1' backend='copilot' />);
+    fireEvent.click(within(screen.getAllByTestId('submenu-body')[2]).getByText('Standard'));
+
+    expect(setConfigOption).not.toHaveBeenCalled();
   });
 
   it('reports runtime readiness changes to its parent', () => {

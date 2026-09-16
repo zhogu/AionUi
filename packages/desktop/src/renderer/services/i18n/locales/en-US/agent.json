@@ -40,6 +40,10 @@
     "busy": "Another setting is being applied. Try again later.",
     "failed": "Failed to apply setting. The previous state is still shown."
   },
+  "contextWindow": {
+    "label": "Context window",
+    "switchSuccess": "Context window switched"
+  },
   "thoughtLevel": {
     "label": "Thinking Level",
     "switchSuccess": "Thinking level switched",

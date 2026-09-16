@@ -40,6 +40,10 @@
     "busy": "Eine andere Einstellung wird gerade angewendet. Versuche es später erneut.",
     "failed": "Einstellung konnte nicht angewendet werden. Vorheriger Status wird angezeigt."
   },
+  "contextWindow": {
+    "label": "Kontextfenster",
+    "switchSuccess": "Kontextfenster gewechselt"
+  },
   "thoughtLevel": {
     "label": "Denk-Stufe",
     "switchSuccess": "Denk-Stufe gewechselt",

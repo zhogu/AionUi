@@ -29,6 +29,7 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: [
+            'packages/copilot-acp/*.test.ts',
             'packages/web-host/src/**/*.test.ts',
             'tests/unit/**/*.test.ts',
             'tests/unit/**/test_*.ts',
@@ -61,7 +62,7 @@ export default defineConfig({
       // Cover ALL source code by default — new files are automatically included.
       // Only exclude files that genuinely cannot be unit-tested (entry points,
       // type-only files, static assets, etc.).
-      include: ['packages/desktop/src/**/*.{ts,tsx}', 'packages/**/src/**/*.{ts,tsx}'],
+      include: ['packages/desktop/src/**/*.{ts,tsx}', 'packages/**/src/**/*.{ts,tsx}', 'packages/copilot-acp/*.mjs'],
       exclude: [
         // Type declaration files (no runtime code)
         'packages/**/src/**/*.d.ts',
