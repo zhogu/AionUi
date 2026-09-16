@@ -10,10 +10,11 @@ import { SdkTransport } from './transport.mjs';
 // AionCore may append native ACP flags. Do not forward them to the SDK server.
 if (process.argv.includes('--help')) {
   process.stdout.write(
-    'Opt-in Copilot SDK ACP adapter. Configure this absolute executable path as command_override.\nEnvironment: AIONUI_COPILOT_CLI, AIONUI_COPILOT_MODEL, AIONUI_COPILOT_ACP_STATE_DIR.\n'
+    'Opt-in Copilot SDK ACP adapter. Set a separate custom agent command to this absolute executable path, with --acp as its argument.\nEnvironment: AIONUI_COPILOT_CLI, AIONUI_COPILOT_MODEL, AIONUI_COPILOT_ACP_STATE_DIR.\n'
   );
 } else {
   const sdk = new SdkTransport({ executable: process.env.AIONUI_COPILOT_CLI || 'copilot' });
+  sdk.on('diagnostic', (chunk) => process.stderr.write(chunk));
   const ownership = new SessionOwnership(
     process.env.AIONUI_COPILOT_ACP_STATE_DIR ||
       join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'aionui', 'copilot-acp')

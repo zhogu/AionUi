@@ -102,6 +102,10 @@ export class CopilotAdapter {
     const id = existing ? params.sessionId : randomUUID();
     if (this.sessions.has(id)) throw invalid('Session is already open');
     await this.ownership.acquire(id, params.cwd, existing);
+    if (this.closed) {
+      await this.ownership.release(id);
+      throw invalid('Adapter closed while acquiring session ownership');
+    }
     const session = {
       id,
       cwd: params.cwd,
@@ -191,7 +195,7 @@ export class CopilotAdapter {
       };
     } catch (error) {
       // Creation can allocate native resources before returning an error.
-      await this.sdk.rpc('session.destroy', { sessionId: id }).catch(() => {});
+      await this.stopNative('session.destroy', id);
       this.sessions.delete(id);
       await this.ownership.release(id);
       throw error;
@@ -391,7 +395,7 @@ export class CopilotAdapter {
     } catch (error) {
       if (active.expectsIdle) {
         session.fault = error;
-        if (!active.settled) await this.sdk.rpc('session.abort', { sessionId }).catch(() => {});
+        await this.stopNative('session.abort', sessionId);
       }
       throw error;
     } finally {
@@ -433,7 +437,7 @@ export class CopilotAdapter {
           .catch((error) => {
             session.fault = error;
             this.finish(session, { error });
-            void this.sdk.rpc('session.abort', { sessionId: session.id }).catch(() => {});
+            void this.stopNative('session.abort', session.id);
           })
           .finally(() => session.permissions.delete(data.requestId));
         session.permissions.set(data.requestId, pending);
@@ -545,7 +549,10 @@ export class CopilotAdapter {
         this.connection
           .requestPermission({ sessionId: session.id, ...request })
           .then((result) => result.outcome)
-          .catch(() => ({ outcome: 'cancelled' })),
+          .catch((error) => {
+            console.error('[copilot-acp] Permission request failed; denying operation:', error);
+            return { outcome: 'cancelled' };
+          }),
         cancelled,
       ]);
     } finally {
@@ -593,6 +600,16 @@ export class CopilotAdapter {
     }
   }
 
+  async stopNative(method, sessionId) {
+    try {
+      await this.sdk.rpc(method, { sessionId });
+    } catch (error) {
+      // Never release a lease or abandon a failed turn while native work may still run.
+      console.error(`[copilot-acp] ${method} failed; closing native transport:`, error);
+      await this.sdk.close();
+    }
+  }
+
   async cancel({ sessionId }) {
     const session = this.sessions.get(sessionId);
     const active = session?.active;
@@ -601,7 +618,7 @@ export class CopilotAdapter {
     if (!active.timer)
       active.timer = setTimeout(() => {
         session.fault = new Error('Native cancellation did not finish; reload the session');
-        void this.sdk.rpc('session.destroy', { sessionId }).catch(() => {});
+        void this.stopNative('session.destroy', sessionId);
         this.finish(session, { stopReason: 'cancelled' });
       }, this.cancelTimeout);
     await this.abortNative(session);

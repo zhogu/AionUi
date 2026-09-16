@@ -316,6 +316,7 @@ describe('prompt lifecycle and native tools', () => {
     const turn = f.prompt();
     f.emit('session.error', { message: 'model unavailable' });
     await expect(turn).rejects.toThrow('model unavailable');
+    expect(f.sdk.rpc).toHaveBeenCalledWith('session.abort', { sessionId: f.sessionId });
   });
 
   it('denies pending permissions on cancellation even if the client responds late', async () => {
@@ -417,6 +418,42 @@ describe('adapter-owned session loading', () => {
     f.agent.preferredModel = 'missing';
     await expect(f.agent.newSession({ cwd: process.cwd(), mcpServers: [] })).rejects.toThrow('startup model');
     expect(f.owner.release).toHaveBeenCalled();
+  });
+
+  it('terminates native transport before releasing a lease when failed startup cannot be destroyed', async () => {
+    const f = await fixture();
+    const original = f.sdk.rpc.getMockImplementation()!;
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    f.sdk.rpc.mockImplementation(async (method, params) => {
+      if (method === 'session.create') throw new Error('startup failed');
+      if (method === 'session.destroy') throw new Error('destroy failed');
+      return original(method, params);
+    });
+    try {
+      await expect(f.agent.newSession({ cwd: process.cwd(), mcpServers: [] })).rejects.toThrow('startup failed');
+      expect(f.sdk.close.mock.invocationCallOrder[0]).toBeLessThan(f.owner.release.mock.invocationCallOrder[0]);
+      expect(logged).toHaveBeenCalled();
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it('releases a late ownership acquisition without starting native work after shutdown', async () => {
+    const f = await fixture();
+    let release!: () => void;
+    f.owner.acquire.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolveAcquire) => {
+          release = resolveAcquire;
+        })
+    );
+    f.sdk.rpc.mockClear();
+    const opening = f.agent.newSession({ cwd: process.cwd(), mcpServers: [] });
+    await f.agent.close();
+    release();
+    await expect(opening).rejects.toThrow('closed while acquiring');
+    expect(f.owner.release).toHaveBeenCalledTimes(2);
+    expect(f.sdk.rpc).not.toHaveBeenCalled();
   });
 
   it('refuses corrupted persisted context state without sending it back to the SDK', async () => {
