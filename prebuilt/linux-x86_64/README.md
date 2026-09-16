@@ -59,6 +59,11 @@ independent **Model**, **Thinking Level** and **Context window** submenus; the
 phone-browser action sheet offers the same choices. A selected tier is confirmed
 before sending the first prompt.
 
+Each tier displays its native **input token budget**, for example
+`Default (272,000 input tokens)` / `Long context (872,000 input tokens)` for
+the currently advertised GPT-6 Astra metadata. Values vary by model and CLI
+metadata; these are not character counts or total input-plus-output limits.
+
 **Upgrading an existing custom agent:** after installing this package and
 restarting the target service, test that saved agent again in **Settings → Agents**
 to refresh its cached per-model capabilities, then refresh the browser. Both
