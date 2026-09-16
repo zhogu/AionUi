@@ -34,6 +34,8 @@ const {
   clearFilesMock,
   draftMutateMock,
   draftContentRef,
+  draftFilesRef,
+  queueHasPendingRef,
   messageWarningMock,
   stopInvokeMock,
 } = vi.hoisted(() => ({
@@ -71,6 +73,8 @@ const {
   clearFilesMock: vi.fn(),
   draftMutateMock: vi.fn(),
   draftContentRef: { current: '' },
+  draftFilesRef: { current: [] as Array<{ kind: 'upload'; path: string }> },
+  queueHasPendingRef: { current: false },
   messageWarningMock: vi.fn(),
   stopInvokeMock: vi.fn().mockResolvedValue(undefined),
 }));
@@ -108,7 +112,7 @@ vi.mock('@/renderer/components/chat/SendBox', () => ({
     crossSessionEnabled,
     isTeamConversation,
   }: {
-    onSend: (message: string) => Promise<void>;
+    onSend: (message: string) => Promise<void | false>;
     onChange?: (value: string) => void;
     rightTools?: React.ReactNode;
     sendButtonPrefix?: React.ReactNode;
@@ -125,6 +129,7 @@ vi.mock('@/renderer/components/chat/SendBox', () => ({
     isTeamConversation?: boolean;
   }) => {
     sendBoxPropsSpy({
+      onSend,
       active,
       onFocused,
       disabled,
@@ -245,7 +250,7 @@ vi.mock('@/renderer/pages/conversation/platforms/useConversationCommandQueue', (
       items: [],
       isPaused: false,
       isInteractionLocked: false,
-      hasPendingCommands: false,
+      hasPendingCommands: queueHasPendingRef.current,
       enqueue: enqueueMock,
       remove: removeMock,
       prioritize: prioritizeMock,
@@ -283,7 +288,7 @@ vi.mock('@/renderer/utils/file/fileSelection', () => ({
   mergeFileSelectionItems: vi.fn(),
 }));
 vi.mock('@/renderer/utils/file/messageFiles', () => ({
-  collectChatFileRefs: () => [],
+  collectChatFileRefs: () => draftFilesRef.current,
   splitChatFileRefs: () => ({ uploadFiles: [], atPath: [] }),
 }));
 vi.mock('@/renderer/pages/conversation/platforms/acp/useAcpInitialMessage', () => ({
@@ -340,6 +345,9 @@ describe('AcpSendBox', () => {
     runtimeViewMock.activeTurnId = null;
     runtimeViewMock.supportsMidturnDelivery = false;
     draftContentRef.current = '';
+    draftFilesRef.current = [];
+    queueHasPendingRef.current = false;
+    enqueueMock.mockImplementation((command) => ({ ...command, id: 'queued-1', created_at: 1 }));
     useTeamPermissionMock.mockReturnValue(null);
     useAcpConfigOptionsMock.mockReturnValue({
       setStatus: { state: 'idle' },
@@ -944,6 +952,145 @@ describe('AcpSendBox', () => {
       });
       expect(enqueueMock).not.toHaveBeenCalled();
       expect(messageWarningMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Copilot prompt queue', () => {
+    const latestSend = () =>
+      (sendBoxPropsSpy.mock.calls.at(-1)![0] as { onSend: (message: string) => Promise<void | false> }).onSend;
+
+    it('uses auto mode by default without changing the default for other agents', () => {
+      const { rerender } = render(
+        <AcpSendBox conversation_id='copilot-default' backend='copilot' messageState={makeMessageState()} />
+      );
+      expect(useConversationCommandQueueSpy).toHaveBeenLastCalledWith(expect.objectContaining({ defaultMode: 'auto' }));
+      rerender(<AcpSendBox conversation_id='claude-default' backend='claude' messageState={makeMessageState()} />);
+      expect(useConversationCommandQueueSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ defaultMode: 'manual' })
+      );
+    });
+
+    it('accepts Send while busy into the existing Draft box without sending or stopping', async () => {
+      runtimeViewMock.isProcessing = true;
+      runtimeViewMock.canSendMessage = false;
+      runtimeViewMock.activeTurnId = 'current-turn';
+      render(<AcpSendBox conversation_id='copilot-busy' backend='copilot' messageState={makeMessageState()} />);
+
+      expect(sendBoxPropsSpy.mock.calls.at(-1)?.[0].sendDisabled).toBe(false);
+      await act(async () => screen.getByRole('button', { name: 'send' }).click());
+
+      expect(enqueueMock).toHaveBeenCalledWith({ input: 'Hello', files: [], sessions: undefined });
+      expect([sendMessageInvokeMock.mock.calls, stopInvokeMock.mock.calls, resetStateMock.mock.calls]).toEqual([
+        [],
+        [],
+        [],
+      ]);
+    });
+
+    it('accepts the Enter submit callback while busy and retains files and session references in the queue', async () => {
+      runtimeViewMock.isProcessing = true;
+      draftFilesRef.current = [{ kind: 'upload', path: '/uploads/design.png' }];
+      render(<AcpSendBox conversation_id='copilot-refs' backend='copilot' messageState={makeMessageState()} />);
+      await act(async () => screen.getByText('pick-session').click());
+      await act(async () => expect(await latestSend()('follow up')).toBeUndefined());
+
+      expect(enqueueMock).toHaveBeenCalledWith({
+        input: 'follow up',
+        files: draftFilesRef.current,
+        sessions: [{ id: 'conv_target' }],
+      });
+      expect(sendBoxPropsSpy.mock.calls.at(-1)?.[0].selectedSessions).toEqual([]);
+    });
+
+    it('appends behind existing drafts even if the runtime is idle instead of jumping the queue', async () => {
+      queueHasPendingRef.current = true;
+      render(<AcpSendBox conversation_id='copilot-pending' backend='copilot' messageState={makeMessageState()} />);
+      await act(async () => latestSend()('last in line'));
+
+      expect(enqueueMock).toHaveBeenCalledWith(expect.objectContaining({ input: 'last in line' }));
+      expect(sendMessageInvokeMock).not.toHaveBeenCalled();
+    });
+
+    it('sends directly when idle with an empty queue', async () => {
+      sendMessageInvokeMock.mockResolvedValue({ turn_id: 't1', runtime: null, msg_id: 'm1' });
+      render(<AcpSendBox conversation_id='copilot-idle' backend='copilot' messageState={makeMessageState()} />);
+      await act(async () => latestSend()('start work'));
+
+      expect(sendMessageInvokeMock).toHaveBeenCalledWith(expect.objectContaining({ input: 'start work' }));
+      expect(enqueueMock).not.toHaveBeenCalled();
+    });
+
+    it('queues a direct-send 409 race without losing attachments or session references', async () => {
+      sendMessageInvokeMock.mockRejectedValue(
+        new BackendHttpError({
+          method: 'POST',
+          path: '/api/conversations/copilot-race/messages',
+          status: 409,
+          body: { code: 'CONFLICT', error: 'conversation copilot-race is already running' },
+        })
+      );
+      draftFilesRef.current = [{ kind: 'upload', path: '/uploads/design.png' }];
+      render(<AcpSendBox conversation_id='copilot-race' backend='copilot' messageState={makeMessageState()} />);
+      await act(async () => screen.getByText('pick-session').click());
+      await act(async () => expect(await latestSend()('race follow-up')).toBeUndefined());
+
+      expect(enqueueMock).toHaveBeenCalledWith({
+        input: 'race follow-up',
+        files: draftFilesRef.current,
+        sessions: [{ id: 'conv_target' }],
+      });
+      expect([stopInvokeMock.mock.calls, messageWarningMock.mock.calls]).toEqual([[], []]);
+    });
+
+    it.each(['busy', 'conflict', 'ordinary'] as const)(
+      'retains the draft and references when %s submission fails',
+      async (failure) => {
+        runtimeViewMock.isProcessing = failure === 'busy';
+        enqueueMock.mockReturnValue(null);
+        sendMessageInvokeMock.mockRejectedValue(
+          failure === 'ordinary'
+            ? new Error('send failed')
+            : new BackendHttpError({
+                method: 'POST',
+                path: '/api/conversations/copilot-failure/messages',
+                status: 409,
+                body: { code: 'CONFLICT', error: 'conversation copilot-failure is already running' },
+              })
+        );
+        draftFilesRef.current = [{ kind: 'upload', path: '/uploads/design.png' }];
+        render(<AcpSendBox conversation_id='copilot-failure' backend='copilot' messageState={makeMessageState()} />);
+        await act(async () => screen.getByText('pick-session').click());
+        await act(async () => expect(await latestSend()('keep my draft')).toBe(false));
+
+        expect(clearFilesMock).not.toHaveBeenCalled();
+        expect(sendBoxPropsSpy.mock.calls.at(-1)?.[0].selectedSessions).toEqual([{ id: 'conv_target' }]);
+      }
+    );
+
+    it('retains the explicit draft when queue validation rejects it', async () => {
+      enqueueMock.mockReturnValue(null);
+      draftContentRef.current = 'keep this draft';
+      render(<AcpSendBox conversation_id='copilot-full' backend='copilot' messageState={makeMessageState()} />);
+      await act(async () => screen.getByText('pick-session').click());
+      await act(async () => screen.getByText('add-to-draft').click());
+
+      expect(draftMutateMock).not.toHaveBeenCalled();
+      expect(clearFilesMock).not.toHaveBeenCalled();
+      expect(sendBoxPropsSpy.mock.calls.at(-1)?.[0].selectedSessions).toEqual([{ id: 'conv_target' }]);
+    });
+
+    it('restores session references when editing a queued draft', async () => {
+      render(<AcpSendBox conversation_id='copilot-edit' backend='copilot' messageState={makeMessageState()} />);
+      await act(async () => {
+        commandQueuePanelPropsSpy.mock.calls.at(-1)?.[0].onEdit({
+          id: 'q1',
+          input: 'draft',
+          files: [],
+          sessions: [{ id: 'original-session' }],
+          created_at: 1,
+        });
+      });
+      expect(sendBoxPropsSpy.mock.calls.at(-1)?.[0].selectedSessions).toEqual([{ id: 'original-session' }]);
     });
   });
 
