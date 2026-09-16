@@ -99,10 +99,7 @@ vi.mock('@/renderer/components/base/AionModal', () => ({
 }));
 vi.mock('@renderer/pages/settings/AgentSettings/InlineAgentEditor', () => ({
   default: ({ onSave }: { onSave: (draft: unknown) => void }) => (
-    <button
-      type="button"
-      onClick={() => onSave({ name: 'New Adapter', command: '/opt/copilot-acp', args: ['--acp'] })}
-    >
+    <button type='button' onClick={() => onSave({ name: 'New Adapter', command: '/opt/copilot-acp', args: ['--acp'] })}>
       save-custom-agent
     </button>
   ),

@@ -76,9 +76,7 @@ function hasModelCapabilityMetadata(agent: ManagedAgent): boolean {
     if (!choice || typeof choice !== 'object') return false;
     const meta = (choice as Record<string, unknown>)._meta;
     return (
-      !!meta &&
-      typeof meta === 'object' &&
-      Array.isArray((meta as Record<string, unknown>)['aionui/model-config'])
+      !!meta && typeof meta === 'object' && Array.isArray((meta as Record<string, unknown>)['aionui/model-config'])
     );
   });
 }
