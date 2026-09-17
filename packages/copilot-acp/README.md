@@ -137,8 +137,10 @@ process’s lease. Ownership `.json` files are not Copilot configuration.
   questions are presented as choices; free-text-only questions are surfaced and
   rejected so the user can cancel and answer with a new prompt. MCP elicitation
   forms, OAuth dialogs and other native host callbacks are not advertised.
-- `/model ID`, `/autopilot on|off`, `/allow-all on|off` use the same validated
-  session configuration path. Native `/context`, `/compact`, `/diff`, `/env` and
+- `/model ID`, `/autopilot on|off`, `/allow-all [on|off]` use the same validated
+  session configuration path. `/allow-all` without an argument enables native
+  permission auto-approval; `/allow-all off` disables it. Native `/context`,
+  `/compact`, `/diff`, `/env` and
   `/help` are offered only when returned by the SDK commands API. Other slash
   commands and host-only dialogs are rejected and **never sent verbatim to the
   model**. The native terminal UI’s complete command/dialog surface is not
