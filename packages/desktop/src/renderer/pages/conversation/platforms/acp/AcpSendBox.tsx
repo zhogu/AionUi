@@ -35,6 +35,7 @@ import {
 import { usePreviewContext } from '@/renderer/pages/conversation/Preview';
 import { useConversationRuntimeView } from '@/renderer/pages/conversation/runtime/useConversationRuntimeView';
 import { getConversationRuntimeWorkspaceErrorMessage } from '@/renderer/pages/conversation/utils/conversationCreateError';
+import { executeAcpConfigCommand } from '@/renderer/pages/conversation/utils/executeAcpConfigCommand';
 import { getChatSurfaceWidthClass } from '@/renderer/pages/conversation/utils/chatSurfaceWidth';
 import { useTeamPermission } from '@/renderer/pages/team/hooks/TeamPermissionContext';
 import type { TeamSendBoxRuntime } from '@/renderer/pages/team/components/teamSendRuntime';
@@ -282,6 +283,8 @@ const AcpSendBox: React.FC<{
     markSendFailed,
     checkAndUpdateTitle,
     addOrUpdateMessage: addOrUpdateMessageRef.current,
+    configOptionsPort: teamPermission?.configOptionsPort,
+    prepareConfig: teamPermission?.warmupSession,
   });
 
   const executeCommand = useCallback(
@@ -290,6 +293,16 @@ const AcpSendBox: React.FC<{
       // [[AION_FILES]] marker at the send edge (no front-end path/marker building).
       try {
         if (teamPermission) await teamPermission.warmupSession();
+        const configuration = await executeAcpConfigCommand(
+          conversation_id,
+          input,
+          files.length > 0 || Boolean(sessions?.length),
+          teamPermission?.configOptionsPort
+        );
+        if (configuration !== null) {
+          Message.success(configuration);
+          return;
+        }
         void checkAndUpdateTitle(conversation_id, input);
         if (teamSendMessage) {
           await teamSendMessage({ input, files });

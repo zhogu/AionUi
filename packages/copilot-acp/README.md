@@ -145,6 +145,10 @@ process’s lease. Ownership `.json` files are not Copilot configuration.
   commands and host-only dialogs are rejected and **never sent verbatim to the
   model**. The native terminal UI’s complete command/dialog surface is not
   reproduced.
+- AionUi routes advertised `/allow-all`, `/autopilot`, and `/model ID` settings
+  through ACP configuration RPCs before first-message instructions are added.
+  Success is shown only after the backend reports the requested value as observed.
+  Files and session references are rejected for these configuration commands.
 - The SDK RPC surface is experimental. Required model/mode/permission methods
   must be available; this adapter intentionally fails instead of silently
   switching back to native ACP or using a restart workaround.

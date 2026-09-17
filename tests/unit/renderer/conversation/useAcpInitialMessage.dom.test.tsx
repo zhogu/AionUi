@@ -9,10 +9,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackendHttpError } from '@/common/adapter/httpBridge';
 import { useAcpInitialMessage } from '@/renderer/pages/conversation/platforms/acp/useAcpInitialMessage';
 
-const { sendMessageInvokeMock, emitterEmitMock } = vi.hoisted(() => ({
+const { sendMessageInvokeMock, emitterEmitMock, configCommandMock } = vi.hoisted(() => ({
   sendMessageInvokeMock: vi.fn(),
   emitterEmitMock: vi.fn(),
+  configCommandMock: vi.fn().mockResolvedValue(null),
 }));
+vi.mock('@/renderer/pages/conversation/utils/executeAcpConfigCommand', () => ({
+  executeAcpConfigCommand: configCommandMock,
+}));
+vi.mock('@arco-design/web-react', () => ({ Message: { success: vi.fn() } }));
 
 vi.mock('@/common', () => ({
   ipcBridge: {
@@ -44,6 +49,27 @@ describe('useAcpInitialMessage', () => {
   beforeEach(() => {
     sessionStorage.clear();
     vi.clearAllMocks();
+    configCommandMock.mockResolvedValue(null);
+  });
+
+  it('handles the initial config command before prompt decoration or model-turn tracking', async () => {
+    sessionStorage.setItem('acp_initial_message_conv-1', JSON.stringify({ input: '/allow-all', files: [] }));
+    configCommandMock.mockResolvedValue('Allow all permissions: Allow all');
+    const markSendStarted = vi.fn();
+    renderHook(() =>
+      useAcpInitialMessage({
+        conversation_id: 'conv-1',
+        backend: 'custom',
+        setAiProcessing: vi.fn(),
+        resetState: vi.fn(),
+        markSendStarted,
+        checkAndUpdateTitle: vi.fn(),
+        addOrUpdateMessage: vi.fn(),
+      })
+    );
+    await waitFor(() => expect(configCommandMock).toHaveBeenCalledWith('conv-1', '/allow-all', false, undefined));
+    expect(markSendStarted).not.toHaveBeenCalled();
+    expect(sendMessageInvokeMock).not.toHaveBeenCalled();
   });
 
   it('suppresses tips and reset when initial ACP send hits active-turn busy', async () => {

@@ -13,6 +13,12 @@ import type { MobileActionSheetEntry } from '@/renderer/components/chat/MobileAc
 import AcpSendBox from '@/renderer/pages/conversation/platforms/acp/AcpSendBox';
 import type { UseAcpMessageReturn } from '@/renderer/pages/conversation/platforms/acp/useAcpMessage';
 import type { TeamSendBoxRuntime } from '@/renderer/pages/team/components/teamSendRuntime';
+const { configCommandMock } = vi.hoisted(() => ({
+  configCommandMock: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('@/renderer/pages/conversation/utils/executeAcpConfigCommand', () => ({
+  executeAcpConfigCommand: configCommandMock,
+}));
 
 const {
   sendMessageInvokeMock,
@@ -336,6 +342,7 @@ const makeMessageState = (): UseAcpMessageReturn => ({
 describe('AcpSendBox', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    configCommandMock.mockResolvedValue(null);
     isMobileMock.current = false;
     mobileActionSheetEntries.current = [];
     runtimeViewMock.hydrated = true;
@@ -359,6 +366,19 @@ describe('AcpSendBox', () => {
       setConfigOption: vi.fn(),
       isConfigOptionBlocked: () => false,
     });
+  });
+
+  it.each([false, true])('routes configuration before prompt send (mobile=%s)', async (mobile) => {
+    isMobileMock.current = mobile;
+    configCommandMock.mockResolvedValue('Allow all permissions: Allow all');
+    render(<AcpSendBox conversation_id='conv-1' backend='custom' messageState={makeMessageState()} />);
+    await act(async () => {
+      await sendBoxPropsSpy.mock.lastCall![0].onSend('/allow-all');
+    });
+    expect(configCommandMock).toHaveBeenCalledWith('conv-1', '/allow-all', false, undefined);
+    expect(sendMessageInvokeMock).not.toHaveBeenCalled();
+    expect(runtimeViewMock.markSendStarted).not.toHaveBeenCalled();
+    expect(Message.success).toHaveBeenCalledWith('Allow all permissions: Allow all');
   });
 
   it('resets ACP loading state when sendMessage fails before any stream error arrives', async () => {
