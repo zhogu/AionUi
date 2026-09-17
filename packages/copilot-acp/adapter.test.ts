@@ -290,6 +290,14 @@ describe('prompt lifecycle and native tools', () => {
     await f.prompt('/autopilot on');
     await f.prompt('/allow-all');
     expect(f.state).toMatchObject({ mode: 'autopilot', permission: 'allow-all' });
+    expect(f.connection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: '/allow-all: on' },
+        }),
+      })
+    );
     await f.prompt('/allow-all off');
     expect(f.state.permission).toBe('manual');
     await f.prompt('/allow-all on');
