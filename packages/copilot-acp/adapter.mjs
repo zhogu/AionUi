@@ -347,6 +347,8 @@ export class CopilotAdapter {
               ? String(value === 'on')
               : value,
       });
+      this.text(session, `/${name}: ${value}`);
+      await session.output;
       return { stopReason: 'end_turn' };
     }
     const controller = new AbortController();

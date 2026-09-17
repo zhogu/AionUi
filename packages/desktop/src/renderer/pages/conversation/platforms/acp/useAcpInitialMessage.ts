@@ -16,6 +16,9 @@ import { getConversationRuntimeWorkspaceErrorMessage } from '../../utils/convers
 import type { ConversationRuntimeSendFailure } from '../../runtime/conversationRuntimeViewStore';
 import { classifyConversationBusyError } from '../conversationBusyError';
 import { buildSendFailureError } from './buildSendFailureError';
+import { executeAcpConfigCommand } from '../../utils/executeAcpConfigCommand';
+import { Message } from '@arco-design/web-react';
+import type { AcpConfigOptionsPort } from '@/renderer/hooks/agent/useAcpConfigOptions';
 
 type UseAcpInitialMessageParams = {
   conversation_id: string;
@@ -27,6 +30,8 @@ type UseAcpInitialMessageParams = {
   markSendFailed?: (failure: ConversationRuntimeSendFailure) => void;
   checkAndUpdateTitle: (conversation_id: string, input: string) => void;
   addOrUpdateMessage: (message: TMessage, prepend?: boolean) => void;
+  configOptionsPort?: AcpConfigOptionsPort;
+  prepareConfig?: () => Promise<void>;
 };
 
 /**
@@ -43,6 +48,8 @@ export const useAcpInitialMessage = ({
   markSendFailed,
   checkAndUpdateTitle,
   addOrUpdateMessage,
+  configOptionsPort,
+  prepareConfig,
 }: UseAcpInitialMessageParams): void => {
   const { t } = useTranslation();
 
@@ -70,6 +77,17 @@ export const useAcpInitialMessage = ({
               .filter(isChatFileRef)
           : [];
 
+        await prepareConfig?.();
+        const configuration = await executeAcpConfigCommand(
+          conversation_id,
+          input,
+          files.length > 0,
+          configOptionsPort
+        );
+        if (configuration !== null) {
+          Message.success(configuration);
+          return;
+        }
         markSendStarted?.();
         setAiProcessing(true);
 
@@ -97,6 +115,8 @@ export const useAcpInitialMessage = ({
           });
           console.info('[useAcpInitialMessage] Initial send hit conversation busy state:', {
             conversation_id,
+            configOptionsPort,
+            prepareConfig,
             busyKind: busyError.kind,
             status: busyError.status,
             code: busyError.code,
