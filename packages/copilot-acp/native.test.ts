@@ -67,6 +67,13 @@ describe.skipIf(!enabled)('opt-in native Copilot smoke (new isolated sessions on
       const session = await agent.newSession({ cwd, mcpServers: [] });
       const sessionId = session.sessionId;
       const set = (configId: string, value: string) => agent.setSessionConfigOption({ sessionId, configId, value });
+      expect(await agent.prompt({ sessionId, prompt: [{ type: 'text', text: '/allow-all' }] })).toEqual({
+        stopReason: 'end_turn',
+      });
+      expect(await sdk.rpc('session.permissions.getMode', { sessionId })).toEqual({ mode: 'allow-all' });
+      await agent.prompt({ sessionId, prompt: [{ type: 'text', text: '/allow-all off' }] });
+      expect(await sdk.rpc('session.permissions.getMode', { sessionId })).toEqual({ mode: 'manual' });
+      console.log(JSON.stringify({ proof: 'native-allow-all-command', enabledWithoutArgument: true }));
       await set('model', model.id);
       if (model.supportedReasoningEfforts?.includes('none')) await set('reasoning_effort', 'none');
       expect(await agent.prompt({ sessionId, prompt: [{ type: 'text', text: '/context' }] })).toEqual({

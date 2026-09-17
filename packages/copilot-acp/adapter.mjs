@@ -182,8 +182,8 @@ export class CopilotAdapter {
           },
           {
             name: 'allow-all',
-            description: 'Explicitly enable or disable native permission auto-approval',
-            input: { hint: 'on | off' },
+            description: 'Enable native permission auto-approval; pass off to disable',
+            input: { hint: '[on | off]' },
           },
         ],
       });
@@ -333,7 +333,7 @@ export class CopilotAdapter {
     if (slash && input.attachments?.length) throw invalid('Slash commands cannot include attachments');
     if (slash && ['model', 'autopilot', 'allow-all'].includes(slash[1])) {
       const name = slash[1];
-      const value = (slash[2] ?? '').trim();
+      const value = (slash[2] ?? (name === 'allow-all' ? 'on' : '')).trim();
       if (name !== 'model' && !['on', 'off'].includes(value)) throw invalid('Specify on or off explicitly');
       await this.setSessionConfigOption({
         sessionId,

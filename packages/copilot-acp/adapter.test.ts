@@ -288,9 +288,14 @@ describe('prompt lifecycle and native tools', () => {
   it('handles the config slash commands without submitting a model turn', async () => {
     const f = await fixture();
     await f.prompt('/autopilot on');
-    await f.prompt('/allow-all on');
+    await f.prompt('/allow-all');
     expect(f.state).toMatchObject({ mode: 'autopilot', permission: 'allow-all' });
+    await f.prompt('/allow-all off');
+    expect(f.state.permission).toBe('manual');
+    await f.prompt('/allow-all on');
+    expect(f.state.permission).toBe('allow-all');
     await expect(f.prompt('/autopilot maybe')).rejects.toThrow('on or off');
+    await expect(f.prompt('/allow-all maybe')).rejects.toThrow('on or off');
     expect(f.sdk.rpc.mock.calls.some(([method]) => method === 'session.send')).toBe(false);
   });
 
