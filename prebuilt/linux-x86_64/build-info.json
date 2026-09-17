@@ -1,8 +1,8 @@
 {
   "version": "2.2.2",
-  "sourceCommit": "09a6ff149d9cc2806a6ccdc4d9e982eee20cb538",
+  "sourceCommit": "9eecaede2c7d487e073c9614e95a94c47c03dcbd",
   "platform": "linux",
   "arch": "x64",
-  "builtAt": "2026-09-17T06:43:12.489Z",
+  "builtAt": "2026-09-17T08:10:03.492Z",
   "optionalCopilotAdapter": "copilot-acp"
 }
