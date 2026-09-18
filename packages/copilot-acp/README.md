@@ -156,6 +156,8 @@ process’s lease. Ownership `.json` files are not Copilot configuration.
   reproduced.
 - AionUi routes advertised `/allow-all`, `/autopilot`, and `/model ID` settings
   through ACP configuration RPCs before first-message instructions are added.
+  For `/allow-all [on|off]`, the shared frontend uses the agent's advertised
+  values: `on`/`off` for official Copilot ACP, `true`/`false` for this adapter.
   Success is shown only after the backend reports the requested value as observed.
   Files and session references are rejected for these configuration commands.
 - The SDK RPC surface is experimental. Required model/mode/permission methods
