@@ -53,8 +53,9 @@
     "clickToWake": "Cliquez pour réveiller ce membre"
   },
   "runtimeRestart": {
+    "teamConfirmContent": "Redémarre le processus de l'agent pour qu'il prenne en compte les changements externes de configuration CLI (comme un changement de canal). L'historique du chat est conservé et la session est reprise si possible.",
     "tooltip": "Reconnecter l'agent",
-    "confirmContent": "Redémarre le processus de l'agent pour qu'il prenne en compte les changements externes de configuration CLI (comme un changement de canal). L'historique du chat est conservé et la session est reprise si possible.",
+    "confirmContent": "Reconnecte cette conversation et interrompt toute réponse en cours. Les verrous Copilot obsolètes sont nettoyés en toute sécurité et la session d'origine est restaurée. L'historique est conservé ; les requêtes échouées ne sont pas renvoyées. Les autorisations Copilot reviennent à la confirmation manuelle.",
     "success": "Agent reconnecté",
     "failed": "Échec de la reconnexion de l'agent",
     "initializingTooltip": "L'agent est en cours d'initialisation. Reconnectez-le lorsqu'il sera prêt",

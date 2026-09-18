@@ -50,6 +50,10 @@ vi.mock('react-i18next', () => ({
 }));
 
 const openFeedbackMock = vi.fn(() => Promise.resolve());
+const teamPermissionMock = vi.fn(() => null as { isTeamMode: true } | null);
+vi.mock('@/renderer/pages/team/hooks/TeamPermissionContext', () => ({
+  useTeamPermission: () => teamPermissionMock(),
+}));
 vi.mock('@/renderer/hooks/context/FeedbackContext', () => ({
   useFeedback: () => ({ openFeedback: openFeedbackMock }),
 }));
@@ -63,6 +67,9 @@ vi.mock('@renderer/components/chat/CollapsibleContent', () => ({
 // MarkdownView pulls in a heavy markdown pipeline — replace with a passthrough.
 vi.mock('@renderer/components/Markdown', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+vi.mock('@/renderer/components/agent/AcpRuntimeRestartButton', () => ({
+  default: ({ conversation_id }: { conversation_id: string }) => <div data-testid='reconnect'>{conversation_id}</div>,
 }));
 
 import MessageTips from '@/renderer/pages/conversation/Messages/components/MessageTips';
@@ -115,6 +122,7 @@ const buildTips = (
 describe('MessageTips — FeedbackButton wiring', () => {
   beforeEach(() => {
     openFeedbackMock.mockClear();
+    teamPermissionMock.mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -124,6 +132,35 @@ describe('MessageTips — FeedbackButton wiring', () => {
   it('does not render FeedbackButton on success tips', () => {
     render(<MessageTips message={buildTips('success')} />);
     expect(screen.queryByText('settings.oneClickFeedback')).not.toBeInTheDocument();
+  });
+
+  it('offers scoped reconnect for a Copilot lease failure', () => {
+    const message = buildTips('error', 'COPILOT_SESSION_IN_USE: Session is already leased');
+    message.conversation_id = 'locked-conversation';
+    render(<MessageTips message={message} />);
+    expect(screen.getByTestId('reconnect')).toHaveTextContent('locked-conversation');
+  });
+
+  it('does not offer lease recovery for unrelated upstream errors', () => {
+    const message = buildTips('error', 'Network disconnected');
+    message.conversation_id = 'other-conversation';
+    render(<MessageTips message={message} />);
+    expect(screen.queryByTestId('reconnect')).not.toBeInTheDocument();
+  });
+
+  it('offers reconnect for JSON-formatted lease errors', () => {
+    const message = buildTips('error', '{"message":"COPILOT_RECOVERY_UNVERIFIED: Incomplete lease metadata"}');
+    message.conversation_id = 'locked-conversation';
+    render(<MessageTips message={message} />);
+    expect(screen.getByTestId('reconnect')).toHaveTextContent('locked-conversation');
+  });
+
+  it('does not send team-owned recovery through the standalone endpoint', () => {
+    teamPermissionMock.mockReturnValue({ isTeamMode: true });
+    const message = buildTips('error', 'COPILOT_SESSION_IN_USE: Session is already leased');
+    message.conversation_id = 'team-conversation';
+    render(<MessageTips message={message} />);
+    expect(screen.queryByTestId('reconnect')).not.toBeInTheDocument();
   });
 
   it('does not render FeedbackButton on warning tips', () => {

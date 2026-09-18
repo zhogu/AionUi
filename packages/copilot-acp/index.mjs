@@ -13,11 +13,14 @@ if (process.argv.includes('--help')) {
     'Opt-in Copilot SDK ACP adapter. Set a separate custom agent command to this absolute executable path, with --acp as its argument.\nEnvironment: AIONUI_COPILOT_CLI, AIONUI_COPILOT_MODEL, AIONUI_COPILOT_ACP_STATE_DIR.\n'
   );
 } else {
+  const recoverSession = process.env.AIONUI_COPILOT_RECOVER_SESSION;
+  delete process.env.AIONUI_COPILOT_RECOVER_SESSION;
   const sdk = new SdkTransport({ executable: process.env.AIONUI_COPILOT_CLI || 'copilot' });
   sdk.on('diagnostic', (chunk) => process.stderr.write(chunk));
   const ownership = new SessionOwnership(
     process.env.AIONUI_COPILOT_ACP_STATE_DIR ||
-      join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'aionui', 'copilot-acp')
+      join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'aionui', 'copilot-acp'),
+    { nativePid: sdk.child.pid, recoverSession }
   );
   let adapter;
   const connection = new AgentSideConnection(

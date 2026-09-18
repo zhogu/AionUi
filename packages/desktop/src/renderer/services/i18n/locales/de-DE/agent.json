@@ -53,8 +53,9 @@
     "clickToWake": "Klicken, um dieses Mitglied zu aktivieren"
   },
   "runtimeRestart": {
+    "teamConfirmContent": "Startet den Agentenprozess neu, damit externe CLI-Konfigurationsänderungen (z. B. Kanalwechsel) übernommen werden. Der Chat-Verlauf bleibt erhalten; die Sitzung wird nach Möglichkeit fortgesetzt.",
     "tooltip": "Agent neu verbinden",
-    "confirmContent": "Startet den Agentenprozess neu, damit externe CLI-Konfigurationsänderungen (z. B. Kanalwechsel) übernommen werden. Der Chat-Verlauf bleibt erhalten; die Sitzung wird nach Möglichkeit fortgesetzt.",
+    "confirmContent": "Verbindet diese Unterhaltung erneut und unterbricht laufende Antworten. Verwaiste Copilot-Sperren werden sicher bereinigt und die ursprüngliche Sitzung wird geladen. Der Verlauf bleibt erhalten; fehlgeschlagene Anfragen werden nicht erneut gesendet. Copilot-Berechtigungen erfordern wieder manuelle Bestätigung.",
     "success": "Agent neu verbunden",
     "failed": "Agent konnte nicht neu verbunden werden",
     "initializingTooltip": "Der Agent wird initialisiert. Verbinden Sie ihn erneut, sobald er bereit ist",

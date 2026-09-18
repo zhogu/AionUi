@@ -53,8 +53,9 @@
     "clickToWake": "Bu üyeyi uyandırmak için tıklayın"
   },
   "runtimeRestart": {
+    "teamConfirmContent": "Harici CLI yapılandırma değişikliklerini (kanal değiştirme gibi) alması için aracı sürecini yeniden başlatır. Sohbet geçmişi korunur ve mümkün olduğunda oturum sürdürülür.",
     "tooltip": "Aracıyı yeniden bağla",
-    "confirmContent": "Harici CLI yapılandırma değişikliklerini (kanal değiştirme gibi) alması için aracı sürecini yeniden başlatır. Sohbet geçmişi korunur ve mümkün olduğunda oturum sürdürülür.",
+    "confirmContent": "Bu konuşmayı yeniden bağlar ve devam eden yanıtı keser. Eski Copilot kilitlerini güvenle temizler ve asıl oturumu yükler. Geçmiş korunur; başarısız istekler yeniden gönderilmez. Copilot izinleri manuel onaya döner.",
     "success": "Aracı yeniden bağlandı",
     "failed": "Aracı yeniden bağlanamadı",
     "initializingTooltip": "Aracı başlatılıyor. Hazır olduğunda yeniden bağlanın",
