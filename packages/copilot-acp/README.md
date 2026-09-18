@@ -9,7 +9,7 @@ changes through ACP; this adapter uses its SDK server instead.
 
 Requirements: Node.js 22+, this checkout’s existing dependencies installed, and a
 separately installed/authenticated native `copilot` executable on `PATH`. Tested
-against Copilot **1.0.83** and `@agentclientprotocol/sdk` **0.18.2**.
+against Copilot **1.0.83 / 1.0.86** and `@agentclientprotocol/sdk` **0.18.2**.
 
 In **Settings → Agents**, add a **custom agent** named, for example,
 `Copilot (context selection)`. Set its command to the absolute executable:
@@ -100,6 +100,15 @@ Do not point `AIONUI_COPILOT_CLI` back at this adapter.
   cancellation aborts native work and denies outstanding permission requests.
   If native cancellation does not finish, the session is destroyed and cannot be
   reused without loading it again.
+- Native `session.title_changed` events are forwarded as ACP
+  `session_info_update`, including changes outside an active turn. The adapter
+  reads `session.name.get` when opening/resuming a session and after each turn,
+  since title events are not stored in native message history. AionUI persists
+  the native name and updates the conversation list; names manually set in
+  AionUI remain authoritative. No separate title-generation prompt is sent.
+  Empty titles, duplicate updates and subagent titles are ignored. On older
+  CLIs without `session.name.get`, a diagnostic is logged and live title events
+  remain supported, but restoring the name requires that native API.
 - ACP stdio, HTTP and SSE MCP declarations are passed to the native SDK; no coding
   tools are reimplemented. Text/embedded text and local `file:` resource links are
   supported. Local attachments are handled by native Copilot, not read by the
@@ -175,7 +184,8 @@ This creates **new isolated sessions only**, makes three minimal `OK` model
 turns, verifies `assistant.usage.maxPromptTokens` against live metadata for
 default → long → default, verifies a single-tier model’s config and rejection,
 exercises harmless native `printf` requests with explicit approval and denial,
-checks an explicit native autopilot `task_complete` summary, owned history replay
+checks an explicit native autopilot `task_complete` summary, native title
+creation/rename/resume synchronization, owned history replay
 and the executable ACP/EOF boundary. The probe
 disables built-in MCPs only for its in-process SDK smoke. It emits sanitized
 token-budget proof, not opaque API tracking fields. Native session journals may
