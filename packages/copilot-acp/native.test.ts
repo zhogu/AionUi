@@ -4,7 +4,7 @@ import { rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { ClientSideConnection, ndJsonStream } from '@agentclientprotocol/sdk';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CopilotAdapter } from './adapter.mjs';
 import { SessionOwnership } from './ownership.mjs';
 import { contextChoices } from './projection.mjs';
@@ -107,6 +107,19 @@ describe.skipIf(!enabled)('opt-in native Copilot smoke (new isolated sessions on
           maxPromptTokens: budgets,
         })
       );
+      const nativeName = await sdk.rpc('session.name.get', { sessionId });
+      expect(nativeName.name).toBeTruthy();
+      expect(updates.filter((update) => update.sessionUpdate === 'session_info_update').at(-1)).toMatchObject({
+        title: nativeName.name,
+      });
+      const nativeTitle = 'Native session title sync';
+      await sdk.rpc('session.name.set', { sessionId, name: nativeTitle });
+      await vi.waitFor(() =>
+        expect(updates.filter((update) => update.sessionUpdate === 'session_info_update').at(-1)).toMatchObject({
+          title: nativeTitle,
+        })
+      );
+      console.log(JSON.stringify({ proof: 'native-session-name-sync', generated: true, renamed: nativeTitle }));
       const small = await set('model', single.id);
       expect(small.configOptions.find((option) => option.id === 'context_window')).toMatchObject({
         currentValue: 'default',
@@ -175,6 +188,12 @@ describe.skipIf(!enabled)('opt-in native Copilot smoke (new isolated sessions on
       const beforeReplay = updates.length;
       await agent.loadSession({ sessionId, cwd, mcpServers: [] });
       expect(updates.slice(beforeReplay).some((update) => update.sessionUpdate === 'agent_message_chunk')).toBe(true);
+      expect(
+        updates
+          .slice(beforeReplay)
+          .filter((update) => update.sessionUpdate === 'session_info_update')
+          .at(-1)
+      ).toMatchObject({ title: nativeTitle });
       await expect(agent.loadSession({ sessionId: randomUUID(), cwd, mcpServers: [] })).rejects.toThrow();
       console.log(JSON.stringify({ proof: 'owned-session-replay-and-foreign-load-rejection' }));
     } finally {

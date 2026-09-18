@@ -39,12 +39,14 @@ async function fixture() {
     model: { modelId: 'tiered', contextTier: 'default', reasoningEffort: 'none' },
     mode: 'interactive',
     permission: 'manual',
+    name: null as string | null,
   };
   sdk.rpc = vi.fn(async (method: string, params: Record<string, string>) => {
     if (method === 'models.list') return { models };
     if (method === 'session.create' || method === 'session.resume') return { sessionId: params.sessionId };
     if (method === 'session.model.getCurrent') return { ...state.model };
     if (method === 'session.mode.get') return state.mode;
+    if (method === 'session.name.get') return { name: state.name };
     if (method === 'session.permissions.getMode') return { mode: state.permission };
     if (method === 'session.permissions.setMode') {
       state.permission = params.mode;
@@ -94,6 +96,156 @@ async function fixture() {
     prompt: (text = 'OK') => agent.prompt({ sessionId, prompt: [{ type: 'text', text }] }),
   };
 }
+
+describe('native session titles', () => {
+  const titleUpdates = (f: Awaited<ReturnType<typeof fixture>>) =>
+    f.connection.sessionUpdate.mock.calls
+      .map(([message]) => message.update)
+      .filter((update) => update.sessionUpdate === 'session_info_update');
+
+  it('forwards native names even outside a prompt and suppresses duplicates and empty titles', async () => {
+    const f = await fixture();
+    expect(titleUpdates(f)).toEqual([]);
+    for (const title of ['  Native title  ', 'Native title', '', '   ', null, 10]) {
+      f.emit('session.title_changed', { title });
+    }
+    await vi.waitFor(() =>
+      expect(titleUpdates(f)).toEqual([{ sessionUpdate: 'session_info_update', title: 'Native title' }])
+    );
+    f.emit('session.title_changed', { title: 'Renamed in Copilot' });
+    await vi.waitFor(() => expect(titleUpdates(f)).toHaveLength(2));
+    expect(titleUpdates(f)[1]).toMatchObject({ title: 'Renamed in Copilot' });
+    expect(f.sdk.rpc.mock.calls.some(([method]) => method === 'session.send')).toBe(false);
+  });
+
+  it('does not adopt titles belonging to subagents or another session', async () => {
+    const f = await fixture();
+    for (const [sessionId, agentId] of [
+      [f.sessionId, 'child'],
+      ['foreign', undefined],
+    ]) {
+      f.sdk.emit('notification', {
+        method: 'session.event',
+        params: { sessionId, event: { type: 'session.title_changed', agentId, data: { title: 'Wrong title' } } },
+      });
+    }
+    await f.agent.sessions.get(f.sessionId).output;
+    expect(titleUpdates(f)).toEqual([]);
+  });
+
+  it('restores the current native name on load rather than replaying old title events', async () => {
+    const f = await fixture();
+    await f.agent.unstable_closeSession({ sessionId: f.sessionId });
+    f.state.name = 'Current CLI name';
+    const rpc = f.sdk.rpc.getMockImplementation()!;
+    f.sdk.rpc.mockImplementation((method, params) =>
+      method === 'session.getMessages'
+        ? Promise.resolve({ events: [{ type: 'session.title_changed', data: { title: 'Historical title' } }] })
+        : rpc(method, params)
+    );
+    await f.agent.loadSession({ sessionId: f.sessionId, cwd: process.cwd(), mcpServers: [] });
+    expect(titleUpdates(f)).toEqual([{ sessionUpdate: 'session_info_update', title: 'Current CLI name' }]);
+  });
+
+  it('reads back a name at turn completion when no change notification is delivered', async () => {
+    const f = await fixture();
+    const turn = f.prompt();
+    await vi.waitFor(() => expect(f.sdk.rpc).toHaveBeenCalledWith('session.send', expect.anything()));
+    f.state.name = 'Native generated name';
+    f.emit('session.idle');
+    await turn;
+    expect(titleUpdates(f)).toEqual([{ sessionUpdate: 'session_info_update', title: 'Native generated name' }]);
+    f.emit('session.title_changed', { title: 'Late title after idle' });
+    await vi.waitFor(() => expect(titleUpdates(f)).toHaveLength(2));
+  });
+
+  it('keeps a live title that arrives while the name snapshot is in flight', async () => {
+    const f = await fixture();
+    let resolveName!: (name: { name: string }) => void;
+    const rpc = f.sdk.rpc.getMockImplementation()!;
+    f.sdk.rpc.mockImplementation((method, params) =>
+      method === 'session.name.get'
+        ? new Promise((resolve) => {
+            resolveName = resolve;
+          })
+        : rpc(method, params)
+    );
+    const refresh = f.agent.refreshTitle(f.agent.sessions.get(f.sessionId));
+    f.emit('session.title_changed', { title: 'Latest live name' });
+    resolveName({ name: 'Stale snapshot' });
+    await refresh;
+    await f.agent.sessions.get(f.sessionId).output;
+    expect(titleUpdates(f)).toEqual([{ sessionUpdate: 'session_info_update', title: 'Latest live name' }]);
+  });
+
+  it('buffers title events during resume and publishes only after opening succeeds', async () => {
+    const f = await fixture();
+    await f.agent.unstable_closeSession({ sessionId: f.sessionId });
+    const rpc = f.sdk.rpc.getMockImplementation()!;
+    f.sdk.rpc.mockImplementation((method, params) => {
+      if (method === 'session.resume') {
+        f.emit('session.title_changed', { title: 'Resume title' });
+        expect(titleUpdates(f)).toEqual([]);
+      }
+      return rpc(method, params);
+    });
+    await f.agent.loadSession({ sessionId: f.sessionId, cwd: process.cwd(), mcpServers: [] });
+    expect(titleUpdates(f)).toEqual([{ sessionUpdate: 'session_info_update', title: 'Resume title' }]);
+  });
+
+  it('logs unsupported name reads once but still forwards live events on older CLIs', async () => {
+    const f = await fixture();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      f.sdk.rpc.mockRejectedValue(Object.assign(new Error('method not found'), { code: -32601 }));
+      await f.agent.refreshTitle(f.agent.sessions.get(f.sessionId));
+      f.sdk.rpc.mockClear();
+      await f.agent.refreshTitle(f.agent.sessions.get(f.sessionId));
+      expect(log).toHaveBeenCalledOnce();
+      expect(f.sdk.rpc).not.toHaveBeenCalled();
+      f.emit('session.title_changed', { title: 'Live-only title' });
+      await f.agent.sessions.get(f.sessionId).output;
+      expect(titleUpdates(f)).toEqual([{ sessionUpdate: 'session_info_update', title: 'Live-only title' }]);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('does not publish a buffered title when opening the session fails', async () => {
+    const f = await fixture();
+    await f.agent.unstable_closeSession({ sessionId: f.sessionId });
+    const rpc = f.sdk.rpc.getMockImplementation()!;
+    f.sdk.rpc.mockImplementation((method, params) => {
+      if (method === 'session.resume') f.emit('session.title_changed', { title: 'Unconfirmed session title' });
+      if (method === 'session.name.get') return Promise.reject(new Error('name read failed'));
+      return rpc(method, params);
+    });
+    await expect(f.agent.loadSession({ sessionId: f.sessionId, cwd: process.cwd(), mcpServers: [] })).rejects.toThrow(
+      'name read failed'
+    );
+    expect(titleUpdates(f)).toEqual([]);
+    expect(f.agent.sessions.has(f.sessionId)).toBe(false);
+  });
+
+  it('does not forward title events arriving during or after session close', async () => {
+    const f = await fixture();
+    const rpc = f.sdk.rpc.getMockImplementation()!;
+    f.sdk.rpc.mockImplementation((method, params) => {
+      if (method === 'session.destroy') f.emit('session.title_changed', { title: 'Closing session title' });
+      return rpc(method, params);
+    });
+    await f.agent.unstable_closeSession({ sessionId: f.sessionId });
+    f.emit('session.title_changed', { title: 'Closed session title' });
+    expect(titleUpdates(f)).toEqual([]);
+  });
+
+  it('surfaces invalid name responses and unexpected native failures', async () => {
+    const f = await fixture();
+    f.sdk.rpc.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('name read failed'));
+    await expect(f.agent.refreshTitle(f.agent.sessions.get(f.sessionId))).rejects.toThrow('valid session name');
+    await expect(f.agent.refreshTitle(f.agent.sessions.get(f.sessionId))).rejects.toThrow('name read failed');
+  });
+});
 
 describe('confirmed context configuration', () => {
   it('rejects malformed tiers before calling the native SDK', async () => {

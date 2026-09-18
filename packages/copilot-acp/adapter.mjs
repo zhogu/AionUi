@@ -36,10 +36,14 @@ export class CopilotAdapter {
     this.models = [];
     this.initialized = false;
     this.closed = false;
+    this.canReadSessionName = true;
     sdk.on('notification', (message) => {
       if (message.method !== 'session.event') return;
       const session = this.sessions.get(message.params?.sessionId);
-      if (session && (!session.loading || message.params.event?.type === 'permission.requested')) {
+      if (
+        session &&
+        (!session.loading || ['permission.requested', 'session.title_changed'].includes(message.params.event?.type))
+      ) {
         this.event(session, message.params.event);
       }
     });
@@ -121,6 +125,9 @@ export class CopilotAdapter {
       tools: new Map(),
       deltas: new Set(),
       permissions: new Map(),
+      title: null,
+      publishedTitle: null,
+      titleRevision: 0,
     };
     this.sessions.set(id, session);
     try {
@@ -165,7 +172,9 @@ export class CopilotAdapter {
         if (!Array.isArray(history?.events)) throw new Error('Native SDK did not return session history');
         for (const event of history.events) this.event(session, event, true);
       } else await this.ownership.save(id, params.cwd);
+      await this.refreshTitle(session);
       session.loading = false;
+      this.publishTitle(session);
       this.update(session, {
         sessionUpdate: 'available_commands_update',
         availableCommands: [
@@ -204,6 +213,41 @@ export class CopilotAdapter {
 
   modes(session) {
     return { currentModeId: session.mode, availableModes: MODES.map((id) => ({ id, name: id })) };
+  }
+
+  publishTitle(session) {
+    if (session.loading || session.closing || this.closed || !session.title || session.publishedTitle === session.title)
+      return;
+    session.publishedTitle = session.title;
+    this.update(session, { sessionUpdate: 'session_info_update', title: session.title });
+  }
+
+  setTitle(session, title) {
+    if (typeof title !== 'string' || !title.trim()) return;
+    session.title = title.trim();
+    session.titleRevision++;
+    this.publishTitle(session);
+  }
+
+  async refreshTitle(session) {
+    if (!this.canReadSessionName) return;
+    const revision = session.titleRevision;
+    let result;
+    try {
+      result = await this.sdk.rpc('session.name.get', { sessionId: session.id });
+    } catch (error) {
+      if (error.code !== -32601) throw error;
+      this.canReadSessionName = false;
+      console.error(
+        '[copilot-acp] Native session.name.get is unavailable; only live title events can be synchronized.'
+      );
+      return;
+    }
+    if (!record(result) || (result.name !== null && typeof result.name !== 'string')) {
+      throw new Error('Copilot SDK did not return a valid session name');
+    }
+    // A live notification can arrive while the snapshot request is in flight.
+    if (revision === session.titleRevision) this.setTitle(session, result.name);
   }
 
   async refresh(session) {
@@ -391,6 +435,7 @@ export class CopilotAdapter {
       if (result.error) throw result.error;
       if (!session.fault && !session.closing && !this.closed) {
         await this.refresh(session);
+        await this.refreshTitle(session);
         await this.publishConfig(session);
       }
       return { stopReason: result.stopReason };
@@ -426,6 +471,10 @@ export class CopilotAdapter {
   event(session, event, replay = false) {
     if (!record(event) || !record(event.data)) return;
     const data = event.data;
+    if (event.type === 'session.title_changed') {
+      if (!replay && !event.agentId) this.setTitle(session, data.title);
+      return;
+    }
     if (!replay && event.type === 'permission.requested' && !data.resolvedByHook) {
       if (!session.permissions.has(data.requestId)) {
         const pending = this.permission(session, data.permissionRequest)
