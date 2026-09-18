@@ -132,7 +132,7 @@ if (!fs.existsSync(backendSrc)) {
   throw new Error(`Backend bundle dir missing at ${backendSrc}. Ensure prepareAioncore succeeded.`);
 }
 fs.mkdirSync(path.dirname(backendDest), { recursive: true });
-fs.cpSync(backendSrc, backendDest, { recursive: true });
+fs.cpSync(backendSrc, backendDest, { recursive: true, verbatimSymlinks: true });
 
 // 8. Create tarball
 fs.mkdirSync(distDir, { recursive: true });
