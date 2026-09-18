@@ -86,6 +86,20 @@ fs.writeFileSync(
       arch,
       builtAt: new Date().toISOString(),
       optionalCopilotAdapter: adapterName,
+      backendSourceCommit: process.env.AIONUI_BACKEND_SOURCE_COMMIT || undefined,
+      backendSha256: crypto
+        .createHash('sha256')
+        .update(
+          fs.readFileSync(
+            path.join(
+              projectRoot,
+              'resources/bundled-aioncore',
+              `${platform}-${arch}`,
+              platform === 'win32' ? 'aioncore.exe' : 'aioncore'
+            )
+          )
+        )
+        .digest('hex'),
     },
     null,
     2
