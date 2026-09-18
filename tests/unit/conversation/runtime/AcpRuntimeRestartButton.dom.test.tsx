@@ -171,7 +171,10 @@ describe('AcpRuntimeRestartButton', () => {
     expect(mocks.getConversation).toHaveBeenCalledWith('conversation-failed');
     expect(mocks.markRestartSucceeded).not.toHaveBeenCalled();
     expect(mocks.revalidateConfig).not.toHaveBeenCalled();
-    expect(mocks.messageError).toHaveBeenCalledWith('agent.runtimeRestart.failed');
+    expect(mocks.messageError).toHaveBeenCalledWith({
+      content: 'agent.runtimeRestart.failed: restart rejected',
+      duration: 8000,
+    });
   });
 
   it('asks the user to wait and does not refresh config when team work is active', async () => {

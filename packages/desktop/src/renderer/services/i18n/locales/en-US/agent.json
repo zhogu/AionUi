@@ -53,8 +53,9 @@
     "clickToWake": "Click to wake this member"
   },
   "runtimeRestart": {
+    "teamConfirmContent": "Restart the agent process so it picks up external CLI config changes (such as a channel switch). Chat history is kept and the session resumes when possible.",
     "tooltip": "Reconnect agent",
-    "confirmContent": "Restart the agent process so it picks up external CLI config changes (such as a channel switch). Chat history is kept and the session resumes when possible.",
+    "confirmContent": "Reconnect this conversation and interrupt any current reply. Safely recover stale Copilot locks and reload the original session. History is kept; failed requests are not resent. Copilot permissions return to manual confirmation.",
     "success": "Agent reconnected",
     "failed": "Failed to reconnect agent",
     "initializingTooltip": "The agent is initializing. Reconnect when it is ready",

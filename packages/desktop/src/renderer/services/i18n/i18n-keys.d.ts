@@ -52,6 +52,7 @@ export type I18nKey =
   | 'agent.runtimeRestart.initializingTooltip'
   | 'agent.runtimeRestart.processingTooltip'
   | 'agent.runtimeRestart.success'
+  | 'agent.runtimeRestart.teamConfirmContent'
   | 'agent.runtimeRestart.tooltip'
   | 'agent.setup.alternativesFound'
   | 'agent.setup.authRequired'

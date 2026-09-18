@@ -53,8 +53,9 @@
     "clickToWake": "Clique para ativar este membro"
   },
   "runtimeRestart": {
+    "teamConfirmContent": "Reinicia o processo do agente para adotar alterações externas de configuração da CLI (como troca de canal). O histórico do chat é mantido e a sessão é retomada quando possível.",
     "tooltip": "Reconectar agente",
-    "confirmContent": "Reinicia o processo do agente para adotar alterações externas de configuração da CLI (como troca de canal). O histórico do chat é mantido e a sessão é retomada quando possível.",
+    "confirmContent": "Reconecta esta conversa e interrompe qualquer resposta em andamento. Recupera com segurança os bloqueios obsoletos do Copilot e carrega a sessão original. O histórico é mantido; solicitações com falha não são reenviadas. As permissões do Copilot voltam à confirmação manual.",
     "success": "Agente reconectado",
     "failed": "Falha ao reconectar o agente",
     "initializingTooltip": "O agente está sendo inicializado. Reconecte quando estiver pronto",

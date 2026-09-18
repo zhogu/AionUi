@@ -57,7 +57,10 @@ export const useAcpRuntimeRestart = ({
       if (isBackendHttpError(error) && error.code === 'TEAM_MEMBER_BUSY') {
         Message.error(t('agent.runtimeRestart.processingTooltip'));
       } else {
-        Message.error(t('agent.runtimeRestart.failed'));
+        Message.error({
+          content: `${t('agent.runtimeRestart.failed')}${parseError(error) ? `: ${parseError(error)}` : ''}`,
+          duration: 8000,
+        });
       }
       throw error;
     } finally {
@@ -117,7 +120,7 @@ const AcpRuntimeRestartButton: React.FC<{
   return (
     <Popconfirm
       title={t('agent.runtimeRestart.tooltip')}
-      content={t('agent.runtimeRestart.confirmContent')}
+      content={t(team ? 'agent.runtimeRestart.teamConfirmContent' : 'agent.runtimeRestart.confirmContent')}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
       onOk={() => {

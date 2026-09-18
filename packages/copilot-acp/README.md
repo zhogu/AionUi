@@ -132,10 +132,43 @@ Empty native sessions may not be resumable until their first model turn is
 persisted. A failed empty-session load returns an error, never a replacement
 session. Native CLI sessions not created here are deliberately not importable.
 
-After a crash, leases fail closed. To recover, verify the recorded PID in the
-specific `<session-id>.lock` file is no longer alive and that no native process is
-using that session, then remove **only that stale lock**. Do not remove another
-process’s lease. Ownership `.json` files are not Copilot configuration.
+### Explicit reconnect after a crash
+
+With the matching recovery-capable AionCore build, use **Reconnect agent** in
+the standalone conversation header (desktop or mobile), or on a lease-error card. Reconnect
+also works when startup failed and no cached runtime remains. It interrupts any
+current reply, preserves history and the native session ID, and never resends a
+failed prompt. Model/context/reasoning are read back; native permissions start
+in manual/interactive mode as on an ordinary resume.
+
+On Linux, a new lease records both the adapter and SDK process identities
+(PID and start time), boot ID, PID namespace and a unique lease ID. Only an
+explicit reconnect for the matching persisted session permits reclamation.
+Normal startup, page reload and message retry do not reclaim leases.
+The backend supplies `AIONUI_COPILOT_RECOVER_SESSION` from its user-scoped
+session record; it is consumed once and is not forwarded to native tools.
+Do not set this variable permanently in agent settings.
+
+Lease mutations are serialized across processes with a Linux abstract Unix
+socket. The kernel releases this mutex on process exit; no second stale lock
+file is introduced. After confirming both previous processes have exited, the
+adapter archives only that session's stale lock, acquires a fresh lease and
+loads the original native session. A late release cannot delete another lease.
+Failed backend startup retires its uncached ACP process instead of leaving
+extra SDK processes behind after each retry.
+Team-owned sessions keep their existing team restart policy and do not use this
+standalone recovery path.
+
+Live owners (`COPILOT_SESSION_IN_USE`), surviving SDK children
+(`COPILOT_SESSION_CHILD_ALIVE`), and unverifiable metadata
+(`COPILOT_RECOVERY_UNVERIFIED`) are not forcefully taken over. Legacy PID-only
+locks, other boot IDs/PID namespaces and non-Linux platforms require an explicit
+ownership check; an old timestamp alone never proves a session is unused.
+These limitations are reported, not hidden behind a replacement empty session.
+
+For a legacy lock, verify that the old adapter and native process no longer use
+the session, then move **only that stale `<session-id>.lock`** aside. Keep the
+ownership `.json` and native session history. Never batch-delete locks.
 
 ## Explicit limitations
 

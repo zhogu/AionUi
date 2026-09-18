@@ -15,6 +15,8 @@ import ButlerDiagnoseButton from '@renderer/components/base/ButlerDiagnoseButton
 import FeedbackButton from '@renderer/components/base/FeedbackButton';
 import CollapsibleContent from '@renderer/components/chat/CollapsibleContent';
 import { iconColors } from '@/renderer/styles/colors';
+import AcpRuntimeRestartButton from '@/renderer/components/agent/AcpRuntimeRestartButton';
+import { useTeamPermission } from '@/renderer/pages/team/hooks/TeamPermissionContext';
 
 // One entry per `IMessageTips['type']`. `info` was missing, and the render
 // falls back to `warning`, so every informational tip was drawn with the alarm
@@ -63,6 +65,7 @@ const resolveAgentTipBody = (
 
 const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
   const { t } = useTranslation();
+  const teamPermission = useTeamPermission();
   const { content, type, code, params } = message.content;
   const structuredError = type === 'error' ? message.content.error : undefined;
   const localizedTipBody = resolveAgentTipBody(content, code, params, t);
@@ -75,6 +78,15 @@ const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
   // what the Butler diagnoses best.
   const shouldShowButler = type === 'error';
   const shouldShowFeedback = type === 'error' && structuredError?.feedback_recommended !== false;
+  const leaseError =
+    type === 'error' &&
+    /COPILOT_(SESSION_IN_USE|SESSION_CHILD_ALIVE|RECOVERY_UNVERIFIED|RECOVERY_BUSY)|Session is already leased/.test(
+      [content, structuredError?.detail, structuredError?.message].filter(Boolean).join('\n')
+    );
+  const reconnectAction =
+    leaseError && message.conversation_id && !teamPermission ? (
+      <AcpRuntimeRestartButton conversation_id={message.conversation_id} />
+    ) : null;
 
   if (structuredError) {
     const errorCode = structuredError.code;
@@ -180,6 +192,7 @@ const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
           </div>
           {shouldShowButler && (
             <div className='flex justify-end'>
+              {reconnectAction}
               <ButlerDiagnoseButton errorText={[title, body, ...detailParts].filter(Boolean).join('\n')} />
               {shouldShowFeedback && (
                 <FeedbackButton
@@ -219,6 +232,7 @@ const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
           </div>
           {type === 'error' && (
             <div className='flex justify-end'>
+              {reconnectAction}
               <ButlerDiagnoseButton errorText={JSON.stringify(data, null, 2)} />
               <FeedbackButton module='conversation-session' />
             </div>
@@ -239,6 +253,7 @@ const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
         </div>
         {shouldShowButler && (
           <div className='flex justify-end'>
+            {reconnectAction}
             <ButlerDiagnoseButton errorText={displayContent} />
             {shouldShowFeedback && <FeedbackButton module='conversation-session' />}
           </div>
