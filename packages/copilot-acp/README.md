@@ -165,6 +165,9 @@ Live owners (`COPILOT_SESSION_IN_USE`), surviving SDK children
 locks, other boot IDs/PID namespaces and non-Linux platforms require an explicit
 ownership check; an old timestamp alone never proves a session is unused.
 These limitations are reported, not hidden behind a replacement empty session.
+If the original session cannot be restored, explicit reconnect reports
+`SESSION_RECOVERY_FAILED` and keeps its persisted session anchor. Public errors
+contain fixed recovery guidance rather than raw upstream diagnostics.
 
 For a legacy lock, verify that the old adapter and native process no longer use
 the session, then move **only that stale `<session-id>.lock`** aside. Keep the

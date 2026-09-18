@@ -17,7 +17,7 @@ async function processIdentity(pid) {
     // /proc stat field 22 is starttime; field 3 follows the parenthesized name.
     return { pid, start: fields[19], state: fields[0] };
   } catch (error) {
-    if (error.code === 'ENOENT') return null;
+    if (error.code === 'ENOENT' || error.code === 'ESRCH') return null;
     throw error;
   }
 }
