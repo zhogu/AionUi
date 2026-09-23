@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { TMessage, TMessageType } from '../utils/messageAdapter';
+import { getTaskCompleteMarkdown, type TMessage, type TMessageType } from '../utils/messageAdapter';
 
 export type ToolSummaryVO = {
   type: 'tool_summary';
@@ -89,28 +89,34 @@ export function getCurrentStepName(messages: TMessage[]): string {
   return '';
 }
 
-export function useProcessedMessages(messages: TMessage[]): ProcessedItem[] {
-  return useMemo(() => {
-    const result: ProcessedItem[] = [];
-    let toolBatch: TMessage[] = [];
+export function processMessages(messages: TMessage[]): ProcessedItem[] {
+  const result: ProcessedItem[] = [];
+  let toolBatch: TMessage[] = [];
 
-    const flushBatch = () => {
-      if (toolBatch.length === 0) return;
-      const id = toolBatch.map((m) => m.id).join('-');
-      result.push({ type: 'tool_summary', id, messages: toolBatch });
-      toolBatch = [];
-    };
+  const flushBatch = () => {
+    if (toolBatch.length === 0) return;
+    const id = toolBatch.map((m) => m.id).join('-');
+    result.push({ type: 'tool_summary', id, messages: toolBatch });
+    toolBatch = [];
+  };
 
-    for (const msg of messages) {
-      if (isToolCallType(msg.type)) {
-        toolBatch.push(msg);
-      } else {
-        flushBatch();
-        result.push(msg);
-      }
+  for (const msg of messages) {
+    const taskCompleteMarkdown = getTaskCompleteMarkdown(msg);
+    if (taskCompleteMarkdown) {
+      flushBatch();
+      result.push({ ...msg, type: 'text', position: 'left', content: { content: taskCompleteMarkdown } });
+    } else if (isToolCallType(msg.type)) {
+      toolBatch.push(msg);
+    } else {
+      flushBatch();
+      result.push(msg);
     }
-    flushBatch();
+  }
+  flushBatch();
 
-    return result;
-  }, [messages]);
+  return result;
+}
+
+export function useProcessedMessages(messages: TMessage[]): ProcessedItem[] {
+  return useMemo(() => processMessages(messages), [messages]);
 }
