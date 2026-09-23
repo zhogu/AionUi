@@ -13,6 +13,7 @@ import { SWRConfig } from 'swr';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type ConversationCommandQueueRuntimeGate,
+  type ConversationCommandQueueMode,
   resetConversationCommandQueueBackgroundRunnerForTest,
   useConversationCommandQueue,
 } from '@/renderer/pages/conversation/platforms/useConversationCommandQueue';
@@ -136,11 +137,13 @@ const emitTurnCompleted = (conversationId: string): void => {
 const renderQueue = ({
   conversation_id,
   runtimeGate,
+  defaultMode,
   isBusy = false,
   onExecute = vi.fn().mockResolvedValue(undefined),
 }: {
   conversation_id: string;
   runtimeGate: ConversationCommandQueueRuntimeGate;
+  defaultMode?: ConversationCommandQueueMode;
   isBusy?: boolean;
   onExecute?: (item: Parameters<Parameters<typeof useConversationCommandQueue>[0]['onExecute']>[0]) => Promise<void>;
 }) =>
@@ -149,6 +152,7 @@ const renderQueue = ({
       useConversationCommandQueue({
         conversation_id,
         enabled: true,
+        defaultMode,
         isBusy: busy,
         runtimeGate: gate,
         onExecute,
@@ -198,6 +202,161 @@ describe('useConversationCommandQueue drain', () => {
 
     await waitFor(() => expect(onExecute).toHaveBeenCalledTimes(1));
     expect(onExecute).toHaveBeenCalledWith(expect.objectContaining({ input: 'queued follow-up' }));
+  });
+
+  it('drains Copilot prompts FIFO only after each current turn completes', async () => {
+    const onExecute = vi.fn().mockResolvedValue(undefined);
+    const { result, rerender } = renderQueue({
+      conversation_id: 'copilot-fifo',
+      defaultMode: 'auto',
+      runtimeGate: processingGate,
+      onExecute,
+    });
+    onExecute.mockImplementation(async () => {
+      rerender({ gate: processingGate, busy: true });
+    });
+    act(() => {
+      result.current.enqueue({ input: 'first', files: [], sessions: [{ id: 'session-one' }] });
+      result.current.enqueue({ input: 'second', files: [{ kind: 'local', path: '/project/design.txt' }] });
+    });
+    expect(onExecute).not.toHaveBeenCalled();
+
+    rerender({ gate: idleGate, busy: false });
+    await waitFor(() => expect(onExecute).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+    expect(result.current.items.map((item) => item.input)).toEqual(['second']);
+
+    rerender({ gate: idleGate, busy: false });
+    await waitFor(() =>
+      expect(onExecute.mock.calls.map(([item]) => [item.input, item.files, item.sessions])).toEqual([
+        ['first', [], [{ id: 'session-one' }]],
+        ['second', [{ kind: 'local', path: '/project/design.txt' }], undefined],
+      ])
+    );
+  });
+
+  it('does not start a second prompt while the first send is awaiting backend acceptance', async () => {
+    let accept!: () => void;
+    const pendingSend = new Promise<void>((resolve) => {
+      accept = resolve;
+    });
+    const onExecute = vi.fn().mockReturnValueOnce(pendingSend).mockResolvedValue(undefined);
+    const { result, rerender } = renderQueue({
+      conversation_id: 'copilot-pending-acceptance',
+      defaultMode: 'auto',
+      runtimeGate: processingGate,
+      onExecute,
+    });
+    act(() => {
+      result.current.enqueue({ input: 'first', files: [] });
+      result.current.enqueue({ input: 'second', files: [] });
+    });
+    rerender({ gate: idleGate, busy: false });
+    await waitFor(() => expect(onExecute).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+    expect(result.current.items.map((item) => item.input)).toEqual(['second']);
+    await act(async () => accept());
+    await waitFor(() => expect(onExecute).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps failed Copilot prompts and later drafts in order without retrying automatically', async () => {
+    const onExecute = vi.fn().mockRejectedValue(new Error('failed to send'));
+    const { result, rerender } = renderQueue({
+      conversation_id: 'copilot-failure',
+      defaultMode: 'auto',
+      runtimeGate: processingGate,
+      onExecute,
+    });
+    act(() => {
+      result.current.enqueue({
+        input: 'first',
+        files: [{ kind: 'upload', path: '/uploads/design.png' }],
+        sessions: [{ id: 'context-session' }],
+      });
+      result.current.enqueue({ input: 'second', files: [] });
+    });
+    rerender({ gate: idleGate, busy: false });
+    await waitFor(() => expect(result.current.isPaused).toBe(true));
+    expect(result.current.items).toMatchObject([
+      {
+        input: 'first',
+        files: [{ kind: 'upload', path: '/uploads/design.png' }],
+        sessions: [{ id: 'context-session' }],
+      },
+      { input: 'second' },
+    ]);
+    expect(onExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not double-drain an in-flight background send when returning to the conversation', async () => {
+    let accept!: () => void;
+    const onExecute = vi
+      .fn()
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          accept = resolve;
+        })
+      )
+      .mockResolvedValue(undefined);
+    const first = renderQueue({
+      conversation_id: 'copilot-return',
+      defaultMode: 'auto',
+      runtimeGate: processingGate,
+      onExecute,
+    });
+    act(() => {
+      first.result.current.enqueue({ input: 'first', files: [] });
+      first.result.current.enqueue({ input: 'second', files: [] });
+    });
+    first.unmount();
+    emitTurnCompleted('copilot-return');
+    await waitFor(() => expect(onExecute).toHaveBeenCalledTimes(1));
+
+    renderQueue({
+      conversation_id: 'copilot-return',
+      defaultMode: 'auto',
+      runtimeGate: idleGate,
+      onExecute,
+    });
+    await act(async () => {});
+    expect(onExecute).toHaveBeenCalledTimes(1);
+    await act(async () => accept());
+    await waitFor(() => expect(onExecute).toHaveBeenCalledTimes(2));
+  });
+
+  it('retains prompts added after remount when an earlier in-flight send fails', async () => {
+    let reject!: (error: Error) => void;
+    const onExecute = vi.fn().mockReturnValue(
+      new Promise<void>((_resolve, rejectSend) => {
+        reject = rejectSend;
+      })
+    );
+    const first = renderQueue({
+      conversation_id: 'copilot-remount-failure',
+      defaultMode: 'auto',
+      runtimeGate: processingGate,
+      onExecute,
+    });
+    act(() => {
+      first.result.current.enqueue({ input: 'first', files: [] });
+      first.result.current.enqueue({ input: 'second', files: [] });
+    });
+    first.rerender({ gate: idleGate, busy: false });
+    await waitFor(() => expect(onExecute).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    const restored = renderQueue({
+      conversation_id: 'copilot-remount-failure',
+      defaultMode: 'auto',
+      runtimeGate: idleGate,
+      onExecute,
+    });
+    act(() => {
+      restored.result.current.enqueue({ input: 'third', files: [] });
+    });
+    await act(async () => reject(new Error('send failed after navigation')));
+    await waitFor(() => expect(restored.result.current.isPaused).toBe(true));
+    expect(restored.result.current.items.map((item) => item.input)).toEqual(['first', 'second', 'third']);
   });
 
   it('ignores legacy persisted team-upgrade handoff state and drains normally', async () => {

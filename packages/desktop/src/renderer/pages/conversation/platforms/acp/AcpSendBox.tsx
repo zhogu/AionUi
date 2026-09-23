@@ -250,6 +250,7 @@ const AcpSendBox: React.FC<{
   };
   const isCancelling = runtimeView.state === 'cancelling';
   const isBusy = isCancelling || commandQueueRuntimeGate.isProcessing || !commandQueueRuntimeGate.canSendMessage;
+  const isCopilot = backend === 'copilot';
 
   // Register handler for adding text from preview panel to sendbox
   useEffect(() => {
@@ -421,12 +422,12 @@ Please check your local CLI tool authentication status`,
 
   const {
     items: queuedCommands,
+    hasPendingCommands,
     mode: queueMode,
     isInteractionLocked: isQueueInteractionLocked,
     enqueue,
     remove,
     prioritize,
-    sendNow,
     clear,
     reorder,
     toggleMode,
@@ -435,13 +436,8 @@ Please check your local CLI tool authentication status`,
     resetActiveExecution,
   } = useConversationCommandQueue({
     conversation_id: conversation_id,
-    // The queue (panel, runner, auto-send) is always live: backends that can
-    // deliver mid-turn (supports_midturn_delivery) still need a working
-    // enqueue for the explicit "add to queue" entry, and queued items must
-    // keep auto-sending once their turn arrives, same as non-supporting
-    // backends. What changed is who can trigger enqueue implicitly — see
-    // onSendHandler below.
     enabled: true,
+    defaultMode: isCopilot ? 'auto' : 'manual',
     isBusy,
     runtimeGate: commandQueueRuntimeGate,
     onExecute: executeCommand,
@@ -452,11 +448,28 @@ Please check your local CLI tool authentication status`,
   const [selectedSessions, setSelectedSessions] = useState<SessionRef[]>([]);
   const { enabled: crossSessionEnabled } = useCrossSessionMessageEnabled();
 
-  // Supporting agents (mid-turn delivery) send immediately, busy or not.
-  // Non-supporting agents can no longer send while the agent is replying —
-  // that path is hard-blocked with a toast; the only way to queue a message
-  // while busy is the explicit "add to queue" entry (handleAddToQueue below).
   const onSendHandler = async (message: string): Promise<void | false> => {
+    const allFiles = collectChatFileRefs(uploadFile, atPath);
+    const sessions = selectedSessions.length > 0 ? selectedSessions : undefined;
+    if (isCopilot) {
+      const command = { input: message, files: allFiles, sessions };
+      if (isBusy || hasPendingCommands) {
+        if (!enqueue(command)) return false;
+      } else {
+        try {
+          await executeCommand(command);
+        } catch (error) {
+          // The backend can become busy before the renderer observes the turn.
+          if (!classifyConversationBusyError(error)) return false;
+          if (!enqueue(command)) return false;
+        }
+      }
+      clearFiles();
+      setSelectedSessions([]);
+      emitter.emit('acp.selected.file.clear');
+      return;
+    }
+
     if (!supportsMidturnDelivery && isBusy) {
       Message.warning(
         t('conversation.commandQueue.midturnBlocked', {
@@ -467,8 +480,6 @@ Please check your local CLI tool authentication status`,
       return false;
     }
 
-    const allFiles = collectChatFileRefs(uploadFile, atPath);
-    const sessions = selectedSessions.length > 0 ? selectedSessions : undefined;
     clearFiles();
     setSelectedSessions([]);
     emitter.emit('acp.selected.file.clear');
@@ -509,7 +520,12 @@ Please check your local CLI tool authentication status`,
     // `@@` references must ride along, and must be released from the send box
     // the same way the draft text is — otherwise they leak into whatever the
     // user sends next.
-    enqueue({ input: content, files: allFiles, sessions: selectedSessions.length > 0 ? selectedSessions : undefined });
+    const queued = enqueue({
+      input: content,
+      files: allFiles,
+      sessions: selectedSessions.length > 0 ? selectedSessions : undefined,
+    });
+    if (!queued) return;
     setContent('');
     clearFiles();
     setSelectedSessions([]);
@@ -524,6 +540,7 @@ Please check your local CLI tool authentication status`,
       const { uploadFiles, atPath: restoredAtPath } = splitChatFileRefs(item.files);
       setUploadFile(uploadFiles);
       setAtPath(restoredAtPath);
+      setSelectedSessions(item.sessions ?? []);
       emitter.emit('acp.selected.file.clear');
     },
     [remove, setAtPath, setContent, setUploadFile]
@@ -865,9 +882,9 @@ Please check your local CLI tool authentication status`,
         active={teamRuntime?.isActive}
         onFocused={teamRuntime?.onFocus}
         disabled={false}
-        sendDisabled={!supportsMidturnDelivery && isBusy}
+        sendDisabled={!isCopilot && !supportsMidturnDelivery && isBusy}
         sendDisabledTooltip={
-          !supportsMidturnDelivery && isBusy
+          !isCopilot && !supportsMidturnDelivery && isBusy
             ? t('conversation.commandQueue.midturnBlockedSendHint', {
                 defaultValue:
                   'The current agent is still working and cannot receive another message yet. Add it to Draft box instead.',
