@@ -87,6 +87,7 @@ fs.writeFileSync(
       builtAt: new Date().toISOString(),
       optionalCopilotAdapter: adapterName,
       backendSourceCommit: process.env.AIONUI_BACKEND_SOURCE_COMMIT || undefined,
+      backendProfile: process.env.AIONUI_BACKEND_PROFILE || undefined,
       backendSha256: crypto
         .createHash('sha256')
         .update(

@@ -1,9 +1,14 @@
 # AionUi Web prebuilt package
 
 This branch contains a ready-to-deploy **Linux x86_64** build of AionUi Web
-2.2.2, rebuilt on 2026-09-16 with the context-window selection, Copilot draft
-queue and mobile-client task-completion changes from PRs #1, #2 and #3.
-The packaged `build-info.json` records the exact source commit and build time.
+2.2.2, rebuilt on 2026-09-23 with context-window selection, Copilot draft
+queuing, native session titles, configuration-command routing, verified session
+recovery and graceful idle shutdown. It also includes the mobile-client
+task-completion changes from PR #3.
+The packaged `build-info.json` records the exact frontend/build source commit,
+backend source commit, backend checksum, build profile and build time.
+This package uses the verified AionCore `0f0164a` backend from the local
+deployment (Rust dev profile with debug information disabled and symbols stripped).
 No Node.js, Bun, dependency installation, or local build is required.
 Native Copilot CLI must still be installed and authenticated separately.
 
@@ -79,6 +84,23 @@ Node instructions are unnecessary for this compiled binary.
 The built-in Copilot entry gets automatic draft queuing from PR #2. The separate
 custom adapter does not inherit that backend-specific default; its existing
 Draft box can be switched to automatic mode explicitly.
+
+## Session lifecycle and recovery
+
+Normal idle collection closes the ACP transport before terminating the process,
+allowing the custom adapter to stop its native child and release its session
+lease. Returning to an idle-collected conversation loads the original session
+without requiring a manual reconnect. Active-tab and background-task protections
+remain enabled; idle collection is not disabled.
+
+After an abnormal exit, use **Reconnect agent**. Recovery verifies ownership
+before reclaiming a stale lease; it does not steal a live session, create an empty
+replacement, or resend the previous prompt. Unverifiable legacy leases still
+require manual ownership verification. See `copilot-acp-README.md` for details.
+
+The built-in Copilot agent's `/allow-all`, `/allow-all on` and `/allow-all off`
+commands now use its advertised `on` / `off` values. The custom adapter continues
+to use its advertised `true` / `false` values.
 
 ## Mobile scope
 
