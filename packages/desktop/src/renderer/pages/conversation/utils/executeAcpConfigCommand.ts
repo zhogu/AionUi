@@ -31,17 +31,17 @@ export async function executeAcpConfigCommand(
   ) {
     throw new Error(`/${command}: specify on or off`);
   }
-  const value =
+  const values =
     command === 'allow-all'
-      ? String(arg !== 'off')
+      ? [arg || 'on', String(arg !== 'off')]
       : command === 'autopilot'
-        ? arg === 'on'
-          ? 'autopilot'
-          : 'interactive'
-        : arg;
-  const choice = option.options.find((entry) => entry.value === value);
+        ? [arg === 'on' ? 'autopilot' : 'interactive']
+        : [arg];
+  // Native ACP uses on/off; the SDK adapter uses true/false. Only send advertised values.
+  const choice = values.map((value) => option.options.find((entry) => entry.value === value)).find(Boolean);
   if (!choice)
     throw new Error(`/${command}: unsupported value; choose ${option.options.map((o) => o.value).join(', ')}`);
+  const value = choice.value;
   if (port?.isConfigOptionBlocked?.(conversationId, id, option.category)) {
     throw new Error('config_update_in_progress');
   }

@@ -45,6 +45,19 @@ const options: AcpConfigOptionDto[] = [
   },
 ];
 
+const nativeOptions: AcpConfigOptionDto[] = [
+  {
+    ...options[0],
+    category: 'permissions',
+    current_value: 'off',
+    options: [
+      { value: 'on', name: 'On' },
+      { value: 'off', name: 'Off' },
+    ],
+  },
+  ...options.slice(1),
+];
+
 describe('executeAcpConfigCommand', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -72,6 +85,42 @@ describe('executeAcpConfigCommand', () => {
     expect(ensure).toHaveBeenCalledWith('conversation');
     expect(set).toHaveBeenCalledExactlyOnceWith({ conversation_id: 'conversation', option_id, value });
     expect(mutate).toHaveBeenCalledWith(['acp-config-options', 'conversation']);
+  });
+
+  it.each([
+    ['/allow-all', 'on'],
+    ['/allow-all  ', 'on'],
+    ['/allow-all on', 'on'],
+    ['/allow-all off', 'off'],
+  ])('uses native Copilot advertised values for %s', async (input, value) => {
+    ensure.mockResolvedValue({ config_options: nativeOptions });
+    set.mockResolvedValue({
+      confirmation: 'observed',
+      config_options: [{ ...nativeOptions[0], current_value: value }],
+    });
+    expect(await executeAcpConfigCommand('native', input, false)).toBe(
+      `Allow all permissions: ${value === 'on' ? 'On' : 'Off'}`
+    );
+    expect(set).toHaveBeenCalledExactlyOnceWith({ conversation_id: 'native', option_id: 'allow_all', value });
+    expect(mutate).toHaveBeenCalledWith(['acp-config-options', 'native']);
+  });
+
+  it.each(['command_ack', 'pending_next_turn', 'observed'])(
+    'does not accept an unchanged native value with %s confirmation',
+    async (confirmation) => {
+      ensure.mockResolvedValue({ config_options: nativeOptions });
+      set.mockResolvedValue({ confirmation, config_options: nativeOptions });
+      await expect(executeAcpConfigCommand('native', '/allow-all on', false)).rejects.toThrow('config_not_observed');
+      expect(mutate).not.toHaveBeenCalled();
+    }
+  );
+
+  it('does not guess permission values from display labels', async () => {
+    ensure.mockResolvedValue({
+      config_options: [{ ...nativeOptions[0], options: [{ value: 'unknown', name: 'On' }] }],
+    });
+    await expect(executeAcpConfigCommand('native', '/allow-all on', false)).rejects.toThrow('unsupported value');
+    expect(set).not.toHaveBeenCalled();
   });
 
   it.each(['Explain /allow-all', '```\n/allow-all\n```', '/allow-all\nDo something', '/compact'])(
@@ -113,22 +162,28 @@ describe('executeAcpConfigCommand', () => {
     await expect(executeAcpConfigCommand('conversation', '/allow-all', false)).rejects.toThrow('session is busy');
   });
 
-  it('uses the team configuration port rather than bypassing its permission checks', async () => {
-    const load = vi.fn().mockResolvedValue(options);
-    const setter = vi.fn().mockResolvedValue({
-      confirmation: 'observed',
-      config_options: [{ ...options[0], current_value: 'true' }],
-    });
-    const blocked = vi.fn().mockReturnValue(true);
-    const port = { load, setConfigOption: setter, isConfigOptionBlocked: blocked };
-    await expect(executeAcpConfigCommand('team-member', '/allow-all', false, port)).rejects.toThrow(
-      'config_update_in_progress'
-    );
-    expect(setter).not.toHaveBeenCalled();
-    blocked.mockReturnValue(false);
-    await executeAcpConfigCommand('team-member', '/allow-all', false, port);
-    expect(setter).toHaveBeenCalledWith('team-member', 'allow_all', 'true');
-    expect(ensure).not.toHaveBeenCalled();
-    expect(set).not.toHaveBeenCalled();
-  });
+  it.each([
+    { advertised: options, value: 'true' },
+    { advertised: nativeOptions, value: 'on' },
+  ])(
+    'uses the team configuration port with $value rather than bypassing its permission checks',
+    async ({ advertised, value }) => {
+      const load = vi.fn().mockResolvedValue(advertised);
+      const setter = vi.fn().mockResolvedValue({
+        confirmation: 'observed',
+        config_options: [{ ...advertised[0], current_value: value }],
+      });
+      const blocked = vi.fn().mockReturnValue(true);
+      const port = { load, setConfigOption: setter, isConfigOptionBlocked: blocked };
+      await expect(executeAcpConfigCommand('team-member', '/allow-all', false, port)).rejects.toThrow(
+        'config_update_in_progress'
+      );
+      expect(setter).not.toHaveBeenCalled();
+      blocked.mockReturnValue(false);
+      await executeAcpConfigCommand('team-member', '/allow-all', false, port);
+      expect(setter).toHaveBeenCalledWith('team-member', 'allow_all', value);
+      expect(ensure).not.toHaveBeenCalled();
+      expect(set).not.toHaveBeenCalled();
+    }
+  );
 });
