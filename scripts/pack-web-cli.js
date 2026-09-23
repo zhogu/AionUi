@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const { prepareAioncore } = require('../packages/shared-scripts/src/prepare-aioncore.js');
 const { resolveAioncoreVersion } = require('./resolveAioncoreVersion.js');
 
@@ -57,6 +57,55 @@ execSync(`bun build --compile --target=${bunTarget} --outfile="${executablePath}
   stdio: 'inherit',
 });
 console.log(`  → ${executablePath}`);
+
+// Ship the optional adapter with its own runtime so deployment needs no checkout or Node installation.
+const adapterName = platform === 'win32' ? 'copilot-acp.exe' : 'copilot-acp';
+const adapterPath = path.join(tarballContentDir, adapterName);
+execFileSync(
+  'bun',
+  [
+    'build',
+    '--compile',
+    `--target=${bunTarget}`,
+    `--outfile=${adapterPath}`,
+    path.join(projectRoot, 'packages/copilot-acp/index.mjs'),
+  ],
+  { cwd: projectRoot, stdio: 'inherit' }
+);
+fs.copyFileSync(
+  path.join(projectRoot, 'packages/copilot-acp/README.md'),
+  path.join(tarballContentDir, 'copilot-acp-README.md')
+);
+fs.writeFileSync(
+  path.join(tarballContentDir, 'build-info.json'),
+  JSON.stringify(
+    {
+      version,
+      sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: projectRoot, encoding: 'utf8' }).trim(),
+      platform,
+      arch,
+      builtAt: new Date().toISOString(),
+      optionalCopilotAdapter: adapterName,
+      backendSourceCommit: process.env.AIONUI_BACKEND_SOURCE_COMMIT || undefined,
+      backendProfile: process.env.AIONUI_BACKEND_PROFILE || undefined,
+      backendSha256: crypto
+        .createHash('sha256')
+        .update(
+          fs.readFileSync(
+            path.join(
+              projectRoot,
+              'resources/bundled-aioncore',
+              `${platform}-${arch}`,
+              platform === 'win32' ? 'aioncore.exe' : 'aioncore'
+            )
+          )
+        )
+        .digest('hex'),
+    },
+    null,
+    2
+  ) + '\n'
+);
 
 // 5. Copy package.json with repo-root version stamped in (for runtime lookup)
 // The source packages/web-cli/package.json is pinned to "0.0.0" as a workspace
