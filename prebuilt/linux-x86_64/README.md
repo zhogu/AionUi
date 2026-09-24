@@ -1,9 +1,9 @@
 # AionUi Web prebuilt package
 
 This branch contains a ready-to-deploy **Linux x86_64** build of AionUi Web
-2.2.2, rebuilt on 2026-09-23 with context-window selection, Copilot draft
+2.2.2, rebuilt on 2026-09-24 with context-window selection, Copilot draft
 queuing, native session titles, configuration-command routing, verified session
-recovery and graceful idle shutdown. It also includes the mobile-client
+recovery, graceful idle shutdown and realtime message reconciliation. It also includes the mobile-client
 task-completion changes from PR #3.
 The packaged `build-info.json` records the exact frontend/build source commit,
 backend source commit, backend checksum, build profile and build time.
@@ -23,8 +23,7 @@ bash install.sh
 If this checkout already exists, run `git pull --ff-only` on `build` first.
 Stop an existing service on the **target machine** before replacing its installation.
 The installer backs up the old installation but does not stop/start services or
-modify conversation data. This build was prepared without updating the source
-machine's running deployment.
+modify conversation data.
 
 Start the service:
 
@@ -101,6 +100,17 @@ require manual ownership verification. See `copilot-acp-README.md` for details.
 The built-in Copilot agent's `/allow-all`, `/allow-all on` and `/allow-all off`
 commands now use its advertised `on` / `off` values. The custom adapter continues
 to use its advertised `true` / `false` values.
+
+## Realtime message recovery
+
+Accepted single-agent sends reconcile saved messages and restore a disconnected
+WebSocket. Open connections are not replaced; stalled connection attempts time
+out after 10 seconds and retry with backoff. Reconnect, network recovery and
+returning to a visible tab reconcile messages and running state without replaying
+prompts or restarting the agent. History gaps spanning multiple pages are filled
+and duplicate user-message notifications are ignored.
+
+This build does not add heartbeat-based detection of half-open sockets.
 
 ## Mobile scope
 
