@@ -26,12 +26,14 @@ vi.mock('@/renderer/pages/conversation/Messages/hooks', () => ({
   useMergeLiveMessage: () => addOrUpdateMessageMock,
 }));
 
-vi.mock('@/renderer/pages/conversation/utils/conversationCache', () => ({
+vi.mock('@/renderer/pages/conversation/utils/conversationCache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/renderer/pages/conversation/utils/conversationCache')>()),
   getConversationOrNull: vi.fn(),
 }));
 
 vi.mock('@/common', () => ({
   ipcBridge: {
+    realtime: { reconnected: { on: vi.fn().mockReturnValue(() => {}) } },
     conversation: {
       responseStream: {
         on: responseStreamOnMock.mockImplementation((handler: (message: IResponseMessage) => void) => {

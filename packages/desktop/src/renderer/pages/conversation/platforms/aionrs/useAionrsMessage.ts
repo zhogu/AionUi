@@ -12,7 +12,11 @@ import { uuid } from '@/common/utils';
 import type { ThoughtData } from '@/renderer/components/chat/ThoughtDisplay';
 import { useMergeLiveMessage } from '@/renderer/pages/conversation/Messages/hooks';
 import { logStreamTerminalObserved } from '@/renderer/pages/conversation/runtime/useConversationRuntimeView';
-import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conversationCache';
+import {
+  getConversationOrNull,
+  subscribeConversationResync,
+} from '@/renderer/pages/conversation/utils/conversationCache';
+import { getConversationRuntimeViewSnapshot } from '@/renderer/pages/conversation/runtime/conversationRuntimeViewStore';
 import { isConversationProcessing } from '@/renderer/pages/conversation/utils/conversationRuntime';
 import { beginConversationTurn, endConversationTurn } from '@/renderer/pages/conversation/utils/conversationTurnClock';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -52,6 +56,7 @@ export const useAionrsMessage = (
   const hydratedConversationRef = useRef<string | null>(null);
   // Current active message ID to filter out events from old requests (prevents aborted request events from interfering with new ones)
   const activeMsgIdRef = useRef<string | null>(null);
+  const streamRevision = useRef(0);
   const messageBufferRef = useRef(new Map<string, string>());
   const processedCronMsgIdsRef = useRef(new Set<string>());
 
@@ -207,6 +212,7 @@ export const useAionrsMessage = (
       if (conversation_id !== message.conversation_id) {
         return;
       }
+      streamRevision.current++;
 
       if (isErrorTipMessage(message)) {
         setStreamRunning(false);
@@ -397,51 +403,74 @@ export const useAionrsMessage = (
 
     // Check actual conversation status from backend before resetting all running states
     // to avoid flicker when switching to a running conversation
-    void getConversationOrNull(conversation_id).then((res) => {
-      if (cancelled) {
-        return;
-      }
+    let request = 0;
+    const hydrate = (recovery = false) => {
+      const currentRequest = ++request;
+      const snapshot = getConversationRuntimeViewSnapshot(conversation_id);
+      const revision = streamRevision.current;
+      void getConversationOrNull(conversation_id)
+        .then((res) => {
+          const current = getConversationRuntimeViewSnapshot(conversation_id);
+          if (
+            cancelled ||
+            currentRequest !== request ||
+            (recovery &&
+              (revision !== streamRevision.current ||
+                (!snapshot.localSubmitting && current.localSubmitting) ||
+                (current.activeTurnId !== null && current.activeTurnId !== snapshot.activeTurnId)))
+          ) {
+            return;
+          }
 
-      if (!res) {
-        hydratedConversationRef.current = conversation_id;
-        endConversationTurn(conversation_id);
-        setStreamRunning(false);
-        streamRunningRef.current = false;
-        setHasActiveTools(false);
-        hasActiveToolsRef.current = false;
-        setWaitingResponse(false);
-        waitingResponseRef.current = false;
-        setHasHydratedRunningState(true);
-        return;
-      }
-      const isRunning = isConversationProcessing(res);
-      hydratedConversationRef.current = conversation_id;
-      if (!isRunning) {
-        // Turn ended while this conversation was in the background — drop the
-        // stale origin so the next turn starts from its own send time. (The
-        // sync effect above cannot cover this: running may already be false,
-        // so it never re-runs after hydration.)
-        endConversationTurn(conversation_id);
-      }
-      setStreamRunning(isRunning);
-      streamRunningRef.current = isRunning;
-      // Reset tool states - they will be restored by incoming messages if still active
-      setHasActiveTools(false);
-      hasActiveToolsRef.current = false;
-      setWaitingResponse(isRunning);
-      waitingResponseRef.current = isRunning;
-      // Load persisted token usage stats
-      if (res.type === 'aionrs' && res.extra?.last_token_usage) {
-        const { last_token_usage } = res.extra;
-        if (last_token_usage.total_tokens > 0) {
-          setTokenUsage(last_token_usage);
-        }
-      }
-      setHasHydratedRunningState(true);
-    });
+          if (!res) {
+            hydratedConversationRef.current = conversation_id;
+            endConversationTurn(conversation_id);
+            setStreamRunning(false);
+            streamRunningRef.current = false;
+            setHasActiveTools(false);
+            hasActiveToolsRef.current = false;
+            setWaitingResponse(false);
+            waitingResponseRef.current = false;
+            setHasHydratedRunningState(true);
+            return;
+          }
+          const isRunning = isConversationProcessing(res);
+          hydratedConversationRef.current = conversation_id;
+          if (!isRunning) {
+            // Turn ended while this conversation was in the background — drop the
+            // stale origin so the next turn starts from its own send time. (The
+            // sync effect above cannot cover this: running may already be false,
+            // so it never re-runs after hydration.)
+            endConversationTurn(conversation_id);
+          }
+          setStreamRunning(isRunning);
+          streamRunningRef.current = isRunning;
+          // Reset tool states - they will be restored by incoming messages if still active
+          setHasActiveTools(false);
+          hasActiveToolsRef.current = false;
+          setWaitingResponse(isRunning);
+          waitingResponseRef.current = isRunning;
+          // Load persisted token usage stats
+          if (res.type === 'aionrs' && res.extra?.last_token_usage) {
+            const { last_token_usage } = res.extra;
+            if (last_token_usage.total_tokens > 0) {
+              setTokenUsage(last_token_usage);
+            }
+          }
+          setHasHydratedRunningState(true);
+        })
+        .catch((error: unknown) => {
+          if (cancelled || currentRequest !== request) return;
+          console.warn('[useAionrsMessage] Failed to hydrate conversation state:', error);
+          setHasHydratedRunningState(true);
+        });
+    };
+    const dispose = subscribeConversationResync(() => hydrate(true));
+    hydrate();
 
     return () => {
       cancelled = true;
+      dispose();
     };
   }, [conversation_id]);
 
