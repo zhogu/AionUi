@@ -12,6 +12,8 @@ import { resetConversationTurnClockForTests } from '@/renderer/pages/conversatio
 import { resetEnsureConversationRuntimeStateForTests } from '@/renderer/pages/conversation/utils/ensureConversationRuntime';
 import type { IResponseMessage } from '@/common/adapter/ipcBridge';
 import { ipcBridge } from '@/common';
+import { ensureRealtimeConnection } from '@/common/adapter/httpBridge';
+import { emitter } from '@/renderer/utils/emitter';
 import type { TChatConversation } from '@/common/config/storage';
 import { useConversationRuntimeView } from '@/renderer/pages/conversation/runtime/useConversationRuntimeView';
 import { resetConversationRuntimeViewStoreForTest } from '@/renderer/pages/conversation/runtime/conversationRuntimeViewStore';
@@ -37,6 +39,11 @@ const {
 vi.mock('@/renderer/pages/conversation/Messages/hooks', () => ({
   useAddOrUpdateMessage: () => addOrUpdateMessageMock,
   useMergeLiveMessage: () => addOrUpdateMessageMock,
+}));
+
+vi.mock('@/common/adapter/httpBridge', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/common/adapter/httpBridge')>()),
+  ensureRealtimeConnection: vi.fn(),
 }));
 
 vi.mock('@/renderer/pages/conversation/utils/conversationCache', async (importOriginal) => ({
@@ -152,6 +159,43 @@ describe('useAcpMessage', () => {
     expect(result.current.message.aiProcessing).toBe(false);
     expect(result.current.message.running).toBe(false);
     expect(result.current.message.turnStartedAtMs).toBeNull();
+  });
+
+  it('checks realtime transport and requests history only after a send is accepted', async () => {
+    vi.mocked(getConversationOrNull).mockResolvedValue(null);
+    const { result } = renderHook(() => useConversationRuntimeView('conv-1'));
+    await waitFor(() => {
+      expect(result.current.hydrated).toBe(true);
+    });
+    const accepted = vi.fn();
+    emitter.on('chat.message.accepted', accepted);
+    try {
+      act(() => {
+        result.current.markSendStarted();
+        result.current.markSendFailed({ kind: 'ordinary', reason: 'network error' });
+      });
+      expect(ensureRealtimeConnection).not.toHaveBeenCalled();
+      expect(accepted).not.toHaveBeenCalled();
+      act(() => {
+        result.current.markSendAccepted(
+          'turn-1',
+          {
+            state: 'running',
+            is_processing: true,
+            can_send_message: false,
+            has_task: true,
+            task_status: 'running',
+            pending_confirmations: 0,
+            turn_id: 'turn-1',
+          },
+          'user-1'
+        );
+      });
+      expect(ensureRealtimeConnection).toHaveBeenCalledTimes(1);
+      expect(accepted).toHaveBeenCalledExactlyOnceWith('conv-1');
+    } finally {
+      emitter.off('chat.message.accepted', accepted);
+    }
   });
 
   it('does not let a late idle recovery snapshot override a new live turn', async () => {

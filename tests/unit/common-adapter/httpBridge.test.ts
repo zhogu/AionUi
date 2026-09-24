@@ -42,6 +42,7 @@ class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
 
   readyState = FakeWebSocket.CONNECTING;
+  readonly send = vi.fn();
   private readonly listeners: { [K in keyof FakeSocketEventMap]: FakeSocketEventMap[K][] } = {
     open: [],
     message: [],
@@ -66,9 +67,15 @@ class FakeWebSocket {
     for (const listener of this.listeners.open) listener();
   }
 
-  dispatchClose() {
+  dispatchClose(code = 1006) {
     this.readyState = FakeWebSocket.CLOSED;
-    for (const listener of this.listeners.close) listener({ code: 1006, reason: '' } as CloseEvent);
+    for (const listener of this.listeners.close) listener({ code, reason: '' } as CloseEvent);
+  }
+
+  dispatchMessage(name: string, data: unknown) {
+    for (const listener of this.listeners.message) {
+      listener({ data: JSON.stringify({ name, data }) } as MessageEvent<string>);
+    }
   }
 }
 
@@ -415,6 +422,119 @@ describe('httpBridge', () => {
       // Should not throw
       emitter.emit();
     });
+  });
+
+  describe('send-time realtime recovery', () => {
+    let transport: typeof import('@/common/adapter/httpBridge');
+
+    beforeEach(async () => {
+      vi.resetModules();
+      vi.useFakeTimers();
+      vi.stubGlobal('window', { __backendPort: 13400 });
+      vi.stubGlobal('WebSocket', FakeWebSocket);
+      vi.spyOn(console, 'debug').mockImplementation(() => {});
+      FakeWebSocket.instances = [];
+      transport = await import('@/common/adapter/httpBridge');
+    });
+
+    afterEach(() => {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    it('keeps an open socket and does not send or replay frames', () => {
+      const reconnect = vi.fn();
+      transport.wsEmitter('realtime.reconnected').on(reconnect);
+      const socket = FakeWebSocket.instances[0];
+      socket.dispatchOpen();
+      transport.ensureRealtimeConnection();
+      transport.ensureRealtimeConnection();
+      vi.advanceTimersByTime(30000);
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+      expect(socket.send).not.toHaveBeenCalled();
+      expect(reconnect).not.toHaveBeenCalled();
+    });
+
+    it('waits for a pending connection and reconciles a send accepted before the first open', () => {
+      const reconnect = vi.fn();
+      transport.wsEmitter('realtime.reconnected').on(reconnect);
+      transport.ensureRealtimeConnection();
+      transport.ensureRealtimeConnection();
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      FakeWebSocket.instances[0].dispatchOpen();
+      expect(reconnect).toHaveBeenCalledExactlyOnceWith({ timestamp: expect.any(Number) });
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('replaces a closed socket once and ignores late events from the replaced connection', () => {
+      const received = vi.fn();
+      const fetch = vi.fn();
+      vi.stubGlobal('fetch', fetch);
+      transport.wsEmitter('message.userCreated').on(received);
+      const old = FakeWebSocket.instances[0];
+      old.dispatchOpen();
+      old.dispatchClose();
+      expect(vi.getTimerCount()).toBe(1);
+      transport.ensureRealtimeConnection();
+      transport.ensureRealtimeConnection();
+      const current = FakeWebSocket.instances[1];
+      current.dispatchOpen();
+      old.dispatchClose(1008);
+      old.dispatchMessage('message.userCreated', { msg_id: 'old' });
+      current.dispatchMessage('message.userCreated', { msg_id: 'current' });
+      vi.advanceTimersByTime(30000);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      expect(received).toHaveBeenCalledExactlyOnceWith({ msg_id: 'current' });
+      expect(fetch).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('bounds stalled handshakes and backs off retries instead of leaving CONNECTING forever', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      transport.ensureRealtimeConnection();
+      const stalled = FakeWebSocket.instances[0];
+      vi.advanceTimersByTime(9999);
+      expect(stalled.readyState).toBe(FakeWebSocket.CONNECTING);
+      vi.advanceTimersByTime(1);
+      expect(stalled.readyState).toBe(FakeWebSocket.CLOSED);
+      expect(warn).toHaveBeenCalledWith('[ensureWs] Connection attempt timed out; retrying');
+      vi.advanceTimersByTime(1000);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      vi.advanceTimersByTime(11999);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      vi.advanceTimersByTime(1);
+      expect(FakeWebSocket.instances).toHaveLength(3);
+      FakeWebSocket.instances[2].dispatchOpen();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it.each([true, false])(
+      'waits for auth refresh and only retries automatically on success (%s)',
+      async (refreshed) => {
+        let resolve!: (value: boolean) => void;
+        const pending = new Promise<boolean>((done) => {
+          resolve = done;
+        });
+        const refresh = vi
+          .spyOn(await import('@/common/adapter/sessionRefresh'), 'refreshSession')
+          .mockReturnValue(pending);
+        transport.ensureRealtimeConnection();
+        FakeWebSocket.instances[0].dispatchOpen();
+        FakeWebSocket.instances[0].dispatchClose(1008);
+        transport.ensureRealtimeConnection();
+        transport.ensureRealtimeConnection();
+        vi.advanceTimersByTime(30000);
+        expect(FakeWebSocket.instances).toHaveLength(1);
+        expect(refresh).toHaveBeenCalledTimes(1);
+        resolve(refreshed);
+        await Promise.resolve();
+        expect(FakeWebSocket.instances).toHaveLength(refreshed ? 2 : 1);
+        if (refreshed) FakeWebSocket.instances[1].dispatchOpen();
+        expect(vi.getTimerCount()).toBe(0);
+      }
+    );
   });
 
   describe('wsMappedEmitter', () => {

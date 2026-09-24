@@ -5,6 +5,7 @@
  */
 
 import { ipcBridge } from '@/common';
+import { ensureRealtimeConnection } from '@/common/adapter/httpBridge';
 import type { TConversationRuntimeSummary } from '@/common/config/storage';
 import {
   reconcileGeneratingFromRuntime,
@@ -174,6 +175,7 @@ export const useConversationRuntimeView = (conversation_id: string): UseConversa
       flushRuntimeViewLogs(localSendAccepted(conversation_id, turn_id, runtime, msg_id));
       reconcileGeneratingFromRuntime(conversation_id, runtime.is_processing === true);
       emitter.emit('chat.message.accepted', conversation_id);
+      ensureRealtimeConnection();
     },
     [conversation_id]
   );

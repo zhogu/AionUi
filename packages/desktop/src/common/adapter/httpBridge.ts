@@ -396,11 +396,20 @@ export function stubProvider<Data, Params = undefined>(name: string, defaultValu
 
 type WsCallback = (data: unknown) => void;
 const REALTIME_RECONNECTED_EVENT = 'realtime.reconnected';
+const WS_CONNECT_TIMEOUT_MS = 10000;
 const wsListeners = new Map<string, Set<WsCallback>>();
 let ws: WebSocket | null = null;
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let wsReconnectAttempt = 0;
 let wsHasOpened = false;
+let wsNeedsResync = false;
+let wsRefreshingAuth = false;
+
+/** Restore the shared transport after an HTTP-accepted send, without replacing a live socket. */
+export function ensureRealtimeConnection(): void {
+  if (!ws || ws.readyState !== WebSocket.OPEN) wsNeedsResync = true;
+  ensureWs();
+}
 
 function dispatchWsEvent(eventName: string, payload: unknown): void {
   const handlers = wsListeners.get(eventName);
@@ -423,6 +432,11 @@ function ensureWs(): void {
     console.debug('[ensureWs] skipped: already open/connecting, readyState=', ws.readyState);
     return;
   }
+  if (wsRefreshingAuth) return;
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
 
   const url = getWsUrl();
   console.debug('[ensureWs] connecting to', url);
@@ -435,20 +449,32 @@ function ensureWs(): void {
   }
 
   const current = ws;
+  const connectTimeout = setTimeout(() => {
+    if (ws !== current || current.readyState !== WebSocket.CONNECTING) return;
+    console.warn('[ensureWs] Connection attempt timed out; retrying');
+    ws = null;
+    current.close();
+    scheduleWsReconnect();
+  }, WS_CONNECT_TIMEOUT_MS);
 
   current.addEventListener('open', () => {
+    clearTimeout(connectTimeout);
+    if (ws !== current) return;
     console.debug('[ensureWs] CONNECTED');
-    const isReconnect = wsHasOpened;
+    const needsResync = wsHasOpened || wsNeedsResync;
     wsHasOpened = true;
+    wsNeedsResync = false;
     wsReconnectAttempt = 0;
-    if (isReconnect) {
+    if (needsResync) {
       dispatchWsEvent(REALTIME_RECONNECTED_EVENT, { timestamp: Date.now() });
     }
   });
 
   current.addEventListener('close', (e) => {
+    clearTimeout(connectTimeout);
+    if (ws !== current) return;
     console.debug('[ensureWs] CLOSED code=' + e.code + ' reason=' + e.reason);
-    if (ws === current) ws = null;
+    ws = null;
     if (e.code === WS_CLOSE_POLICY_VIOLATION) {
       // Auth policy violation (expired/missing session). Blindly reconnecting with
       // the same dead cookie is the #4124 loop — refresh once and only reconnect if
@@ -461,11 +487,13 @@ function ensureWs(): void {
   });
 
   current.addEventListener('error', (e) => {
+    if (ws !== current) return;
     console.error('[ensureWs] ERROR', e);
     current.close();
   });
 
   current.addEventListener('message', (event: MessageEvent) => {
+    if (ws !== current) return;
     try {
       const msg = JSON.parse(event.data as string) as {
         name?: string;
@@ -501,7 +529,9 @@ function scheduleWsReconnect(): void {
  * A failed refresh means the session is truly dead — we stop rather than loop.
  */
 async function handleWsAuthClose(): Promise<void> {
+  wsRefreshingAuth = true;
   const refreshed = await refreshSession();
+  wsRefreshingAuth = false;
   if (refreshed) {
     wsReconnectAttempt = 0;
     ensureWs();
