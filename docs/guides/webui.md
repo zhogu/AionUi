@@ -473,6 +473,12 @@ Access from other devices: `http://YOUR_IP_ADDRESS:3000`
 
 ## Troubleshooting
 
+### Messages missing after a connection interruption
+
+Sending a message uses HTTP; live message updates use a separate WebSocket connection. A successful send can therefore reach the agent even while live updates are interrupted. Do not resend the prompt just because its bubble is delayed.
+
+Conversations reload their saved messages after a realtime reconnect, a network-online event, or returning to a visible browser tab; single-agent sends also trigger this reconciliation after the HTTP acknowledgement. Recovery fills gaps across history pages and merges messages by identity, without refreshing the whole page or resending requests. Reconnect and tab-resume recovery also reconcile the agent's running state. This does not restart the agent or its session.
+
 ### Port Already in Use
 
 If port 3000 is already in use, the application will automatically try the next available port. Check the console output for the actual port number.

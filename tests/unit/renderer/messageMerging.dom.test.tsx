@@ -8,6 +8,7 @@ import React, { type PropsWithChildren } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ipcBridge } from '@/common';
+import { emitter } from '@/renderer/utils/emitter';
 import type { IMessageAcpToolCall, IMessageText, IMessageThinking } from '@/common/chat/chatLib';
 import {
   MessageListLoadingProvider,
@@ -21,6 +22,7 @@ import {
 
 vi.mock('@/common', () => ({
   ipcBridge: {
+    realtime: { reconnected: { on: vi.fn().mockReturnValue(() => {}) } },
     conversation: {
       userCreated: {
         on: vi.fn().mockReturnValue(() => {}),
@@ -270,16 +272,200 @@ describe('message merging', () => {
     renderHook(() => useMessageLstCache(CONVERSATION_ID), {
       wrapper: CacheWrapper,
     });
-
     await act(async () => {
       await Promise.resolve();
     });
-
     expect(invoke).toHaveBeenCalledWith({
       conversation_id: CONVERSATION_ID,
       limit: 50,
       content_mode: 'compact',
     });
+  });
+
+  it('recovers missing accepted messages and a finished answer after reconnect without duplicates', async () => {
+    const invoke = vi.mocked(ipcBridge.database.getConversationMessages.invoke);
+    const page = (items: IMessageText[]) => ({
+      items,
+      oldest_cursor: null,
+      newest_cursor: null,
+      has_more_before: false,
+      has_more_after: false,
+    });
+    invoke.mockResolvedValue(page([]));
+    const { result } = renderHook(
+      () => {
+        useMessageLstCache(CONVERSATION_ID);
+        return useMessageHarness();
+      },
+      { wrapper: CacheWrapper }
+    );
+    await flushMessageQueue();
+    const user = { ...createTextMessage('user', 'accepted prompt'), position: 'right' as const };
+    invoke.mockResolvedValue(page([user]));
+    await act(async () => {
+      emitter.emit('chat.message.accepted', CONVERSATION_ID);
+    });
+    expect(result.current.messages).toHaveLength(1);
+    const userCreated = vi.mocked(ipcBridge.conversation.userCreated.on).mock.calls.at(-1)![0];
+    act(() => {
+      userCreated({
+        conversation_id: CONVERSATION_ID,
+        msg_id: user.msg_id,
+        content: 'accepted prompt',
+        position: 'right',
+        status: 'pending',
+        hidden: false,
+        created_at: Date.now(),
+      });
+    });
+    expect(result.current.messages).toHaveLength(1);
+    expect((result.current.messages[0] as IMessageText).content.content).toBe('accepted prompt');
+    const answer = createTextMessage('answer', 'whole response');
+    invoke.mockResolvedValue(page([user, answer]));
+    const reconnect = vi.mocked(ipcBridge.realtime.reconnected.on).mock.calls.at(-1)![0];
+    await act(async () => {
+      reconnect({ timestamp: Date.now() });
+    });
+    expect(result.current.messages).toHaveLength(2);
+    result.current.addOrUpdateMessage({
+      ...answer,
+      content: { content: 'whole response with live suffix', replace: true },
+    });
+    await flushMessageQueue();
+    await act(async () => {
+      reconnect({ timestamp: Date.now() });
+    });
+    expect(result.current.messages).toHaveLength(2);
+    expect((result.current.messages[1] as IMessageText).content.content).toBe('whole response with live suffix');
+  });
+
+  it('fills multiple missed pages and keeps older history before the new messages', async () => {
+    const invoke = vi.mocked(ipcBridge.database.getConversationMessages.invoke);
+    const messages = Array.from({ length: 112 }, (_, i) => createTextMessage(`id-${i}`, `message ${i}`));
+    invoke.mockResolvedValueOnce({
+      items: messages.slice(0, 2),
+      oldest_cursor: '0',
+      newest_cursor: '1',
+      has_more_before: false,
+      has_more_after: false,
+    });
+    const { result } = renderHook(
+      () => {
+        useMessageLstCache(CONVERSATION_ID);
+        return useMessageList();
+      },
+      { wrapper: CacheWrapper }
+    );
+    await flushMessageQueue();
+    invoke
+      .mockResolvedValueOnce({
+        items: messages.slice(62),
+        oldest_cursor: '62',
+        newest_cursor: '111',
+        has_more_before: true,
+        has_more_after: false,
+      })
+      .mockResolvedValueOnce({
+        items: messages.slice(12, 62),
+        oldest_cursor: '12',
+        newest_cursor: '61',
+        has_more_before: true,
+        has_more_after: true,
+      })
+      .mockResolvedValueOnce({
+        items: messages.slice(1, 12),
+        oldest_cursor: '1',
+        newest_cursor: '11',
+        has_more_before: true,
+        has_more_after: true,
+      });
+    const reconnect = vi.mocked(ipcBridge.realtime.reconnected.on).mock.calls.at(-1)![0];
+    await act(async () => {
+      reconnect({ timestamp: Date.now() });
+    });
+    expect(result.current.map((message) => message.msg_id)).toEqual(messages.map((message) => message.msg_id));
+    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ before: '62' }));
+    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ before: '12' }));
+  });
+
+  it('ignores late loads after switching conversations and recovers on tab visibility', async () => {
+    const invoke = vi.mocked(ipcBridge.database.getConversationMessages.invoke);
+    let resolveOld!: (value: Awaited<ReturnType<typeof invoke>>) => void;
+    invoke.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        })
+    );
+    const page = {
+      items: [],
+      oldest_cursor: null,
+      newest_cursor: null,
+      has_more_before: false,
+      has_more_after: false,
+    };
+    invoke.mockResolvedValue(page);
+    const { result, rerender, unmount } = renderHook(
+      ({ id }) => {
+        useMessageLstCache(id);
+        return useMessageList();
+      },
+      { wrapper: CacheWrapper, initialProps: { id: CONVERSATION_ID } }
+    );
+    rerender({ id: 'conversation-2' });
+    await flushMessageQueue();
+    await act(async () => {
+      resolveOld({ ...page, items: [createTextMessage('old', 'wrong conversation')] });
+    });
+    expect(result.current).toEqual([]);
+    invoke.mockClear();
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ conversation_id: 'conversation-2' }));
+    unmount();
+    invoke.mockClear();
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('keeps messages after a failed reconnect fetch and retries on network recovery', async () => {
+    const invoke = vi.mocked(ipcBridge.database.getConversationMessages.invoke);
+    const first = createTextMessage('first', 'already visible');
+    const page = {
+      items: [first],
+      oldest_cursor: null,
+      newest_cursor: null,
+      has_more_before: false,
+      has_more_after: false,
+    };
+    invoke.mockResolvedValue(page);
+    const { result } = renderHook(
+      () => {
+        useMessageLstCache(CONVERSATION_ID);
+        return useMessageList();
+      },
+      { wrapper: CacheWrapper }
+    );
+    await flushMessageQueue();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      invoke.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      await act(async () => {
+        vi.mocked(ipcBridge.realtime.reconnected.on).mock.calls.at(-1)![0]({ timestamp: Date.now() });
+      });
+      expect(result.current.map((message) => message.msg_id)).toEqual(['first']);
+      expect(log).toHaveBeenCalledWith('[useMessageLstCache] Failed to reconcile messages:', expect.any(TypeError));
+      invoke.mockResolvedValue({ ...page, items: [first, createTextMessage('second', 'recovered')] });
+      await act(async () => {
+        window.dispatchEvent(new Event('online'));
+      });
+      expect(result.current.map((message) => message.msg_id)).toEqual(['first', 'second']);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('flips a pending user message to finish when message.statusChanged arrives for it', async () => {

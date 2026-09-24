@@ -11,6 +11,10 @@ import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conve
 import { resetConversationTurnClockForTests } from '@/renderer/pages/conversation/utils/conversationTurnClock';
 import { resetEnsureConversationRuntimeStateForTests } from '@/renderer/pages/conversation/utils/ensureConversationRuntime';
 import type { IResponseMessage } from '@/common/adapter/ipcBridge';
+import { ipcBridge } from '@/common';
+import type { TChatConversation } from '@/common/config/storage';
+import { useConversationRuntimeView } from '@/renderer/pages/conversation/runtime/useConversationRuntimeView';
+import { resetConversationRuntimeViewStoreForTest } from '@/renderer/pages/conversation/runtime/conversationRuntimeViewStore';
 
 const {
   addOrUpdateMessageMock,
@@ -35,12 +39,14 @@ vi.mock('@/renderer/pages/conversation/Messages/hooks', () => ({
   useMergeLiveMessage: () => addOrUpdateMessageMock,
 }));
 
-vi.mock('@/renderer/pages/conversation/utils/conversationCache', () => ({
+vi.mock('@/renderer/pages/conversation/utils/conversationCache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/renderer/pages/conversation/utils/conversationCache')>()),
   getConversationOrNull: vi.fn(),
 }));
 
 vi.mock('@/common', () => ({
   ipcBridge: {
+    realtime: { reconnected: { on: vi.fn().mockReturnValue(() => {}) } },
     acpConversation: {
       responseStream: {
         on: responseStreamOnMock.mockImplementation((handler: (message: IResponseMessage) => void) => {
@@ -77,6 +83,7 @@ describe('useAcpMessage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetConversationTurnClockForTests();
+    resetConversationRuntimeViewStoreForTest();
     resetEnsureConversationRuntimeStateForTests();
     ensureRuntimeInvokeMock.mockResolvedValue({ recovered: false, config_options: [], runtime: null });
     getSlashCommandsInvokeMock.mockResolvedValue([]);
@@ -95,6 +102,81 @@ describe('useAcpMessage', () => {
 
     expect(result.current.running).toBe(false);
     expect(result.current.aiProcessing).toBe(false);
+  });
+
+  it('reconciles missed completion for both the activity indicator and send gate on reconnect', async () => {
+    const conversation: TChatConversation = {
+      id: 'conv-1',
+      type: 'acp',
+      name: 'Realtime test',
+      created_at: 1,
+      modified_at: 1,
+      extra: { backend: 'copilot' },
+      runtime: {
+        state: 'running',
+        is_processing: true,
+        can_send_message: false,
+        has_task: true,
+        task_status: 'running',
+        pending_confirmations: 0,
+        turn_id: 'turn-1',
+      },
+    };
+    vi.mocked(getConversationOrNull).mockResolvedValue(conversation);
+    const { result } = renderHook(() => ({
+      message: useAcpMessage('conv-1'),
+      runtime: useConversationRuntimeView('conv-1'),
+    }));
+    await waitFor(() => {
+      expect(result.current.runtime.isProcessing).toBe(true);
+    });
+    expect(result.current.message.aiProcessing).toBe(true);
+    vi.mocked(getConversationOrNull).mockResolvedValue({
+      ...conversation,
+      runtime: {
+        state: 'idle',
+        is_processing: false,
+        can_send_message: true,
+        has_task: true,
+        task_status: 'finished',
+        pending_confirmations: 0,
+        turn_id: null,
+      },
+    });
+    await act(async () => {
+      for (const [callback] of vi.mocked(ipcBridge.realtime.reconnected.on).mock.calls)
+        callback({ timestamp: Date.now() });
+    });
+    expect(result.current.runtime.isProcessing).toBe(false);
+    expect(result.current.runtime.canSendMessage).toBe(true);
+    expect(result.current.message.aiProcessing).toBe(false);
+    expect(result.current.message.running).toBe(false);
+    expect(result.current.message.turnStartedAtMs).toBeNull();
+  });
+
+  it('does not let a late idle recovery snapshot override a new live turn', async () => {
+    vi.mocked(getConversationOrNull).mockResolvedValue(null);
+    const { result } = renderHook(() => useAcpMessage('conv-1'));
+    await waitFor(() => {
+      expect(result.current.hasHydratedRunningState).toBe(true);
+    });
+    const pending = deferred<Awaited<ReturnType<typeof getConversationOrNull>>>();
+    vi.mocked(getConversationOrNull).mockReturnValueOnce(pending.promise);
+    act(() => {
+      vi.mocked(ipcBridge.realtime.reconnected.on).mock.calls.at(-1)![0]({ timestamp: Date.now() });
+      result.current.setAiProcessing(true);
+      responseStreamHandlerRef.current?.({
+        type: 'start',
+        conversation_id: 'conv-1',
+        msg_id: 'new-turn',
+        data: null,
+      });
+    });
+    await act(async () => {
+      pending.resolve(null);
+    });
+    expect(result.current.aiProcessing).toBe(true);
+    expect(result.current.running).toBe(true);
   });
 
   it('emits a synthetic thinking done update on finish when the stream never sends one', async () => {

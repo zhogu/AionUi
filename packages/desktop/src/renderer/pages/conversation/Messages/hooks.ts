@@ -17,6 +17,8 @@ import {
 } from '@/common/chat/chatLib';
 import { useCallback, useEffect, useRef } from 'react';
 import { createContext } from '@renderer/utils/ui/createContext';
+import { addEventListener } from '@/renderer/utils/emitter';
+import { subscribeConversationResync } from '../utils/conversationCache';
 import {
   DEFAULT_MESSAGE_PAGE_LIMIT,
   loadConversationAnchorWindow,
@@ -812,12 +814,20 @@ function mergeLoadedPageWithCurrent(conversationId: string, messages: TMessage[]
   const liveOnly = sameConversation.filter(
     (message) => !loadedIds.has(message.id) && !loadedKeys.has(getMessageMergeKey(message))
   );
+  const firstOverlap = sameConversation.findIndex(
+    (message) => loadedIds.has(message.id) || loadedKeys.has(getMessageMergeKey(message))
+  );
+  const historyOnly = new Set(firstOverlap > 0 ? sameConversation.slice(0, firstOverlap) : []);
 
   // Fold after the concat, not before: the live card and the persisted rows of
   // the same retry run reach this point as separate entries (a persisted tip has
   // no msg_id, so neither merge key matches), and only a key-based fold sees
   // that they are one card.
-  return foldSupersededTips(liveOnly.length ? [...mergedMessages, ...liveOnly] : mergedMessages);
+  return foldSupersededTips([
+    ...liveOnly.filter((message) => historyOnly.has(message)),
+    ...mergedMessages,
+    ...liveOnly.filter((message) => !historyOnly.has(message)),
+  ]);
 }
 
 export function prependHistoryMessages(currentList: TMessage[], messages: TMessage[]): TMessage[] {
@@ -935,6 +945,15 @@ export const useMessageLstCache = (key: string) => {
   const list = useMessageList();
   const setLoading = useUpdateMessageListLoading();
   const setPagination = useUpdateMessagePaginationState();
+  const loadState = useRef<{ key: string; request: number; anchor?: string }>({ key, request: 0 });
+  useEffect(() => {
+    const state = { key, request: 0 };
+    loadState.current = state;
+    return () => {
+      state.request++;
+      state.key = '';
+    };
+  }, [key]);
   // Mirrors the current list into a ref so the turnCompleted handler below
   // can inspect it synchronously without re-subscribing to the WS event on
   // every list change (useState's functional updater runs asynchronously,
@@ -944,21 +963,43 @@ export const useMessageLstCache = (key: string) => {
     listRef.current = list;
   }, [list]);
   const loadMessages = useCallback(async (): Promise<TMessage[]> => {
+    const state = loadState.current;
+    const request = ++state.request;
+    const isCurrent = () => state === loadState.current && state.key === key && state.request === request;
     const result = await loadLatestConversationMessages(key, {
       limit: DEFAULT_MESSAGE_PAGE_LIMIT,
       contentMode: 'compact',
     });
-    const messages = result?.items?.map(normalizeDbMessage);
+    if (!isCurrent()) return [];
+    let messages = result.items.map(normalizeDbMessage);
+    let oldest = result;
+    // Fill the entire gap, not just the last 50 rows. The anchor is from the
+    // previous DB snapshot, not a live frame that may have arrived after a gap.
+    while (
+      state.anchor &&
+      oldest.has_more_before &&
+      !messages.some((message) => getMessageMergeKey(message) === state.anchor)
+    ) {
+      if (!oldest.oldest_cursor) throw new Error('Message catch-up page is missing its history cursor');
+      const before = oldest.oldest_cursor;
+      oldest = await loadConversationMessagePage(key, { before, contentMode: 'compact' });
+      if (!isCurrent()) return [];
+      if (oldest.has_more_before && oldest.oldest_cursor === before)
+        throw new Error('Message catch-up cursor did not advance');
+      messages = [...oldest.items.map(normalizeDbMessage), ...messages];
+    }
     if (messages && Array.isArray(messages)) {
+      const hadSnapshot = Boolean(state.anchor);
+      state.anchor = messages.length ? getMessageMergeKey(messages[messages.length - 1]) : undefined;
       update((currentList) => mergeLoadedPageWithCurrent(key, messages, currentList));
-      setPagination({
-        oldestCursor: result.oldest_cursor ?? undefined,
+      setPagination((current) => ({
+        oldestCursor: hadSnapshot ? current.oldestCursor : (oldest.oldest_cursor ?? undefined),
         newestCursor: result.newest_cursor ?? undefined,
-        hasMoreBefore: result.has_more_before,
+        hasMoreBefore: hadSnapshot ? current.hasMoreBefore : oldest.has_more_before,
         hasMoreAfter: result.has_more_after,
         isLoadingBefore: false,
         isLoadingAnchor: false,
-      });
+      }));
       return messages;
     }
     return [];
@@ -984,6 +1025,23 @@ export const useMessageLstCache = (key: string) => {
   }, [key, loadMessages, setLoading, setPagination]);
 
   useEffect(() => {
+    if (!key) return;
+    const refresh = () => {
+      void loadMessages().catch((error) => {
+        console.error('[useMessageLstCache] Failed to reconcile messages:', error);
+      });
+    };
+    const disposeResync = subscribeConversationResync(refresh);
+    const disposeAccepted = addEventListener('chat.message.accepted', (conversationId) => {
+      if (conversationId === key) refresh();
+    });
+    return () => {
+      disposeResync();
+      disposeAccepted();
+    };
+  }, [key, loadMessages]);
+
+  useEffect(() => {
     if (!key) {
       return;
     }
@@ -995,6 +1053,10 @@ export const useMessageLstCache = (key: string) => {
 
       update((list) => {
         const index = getOrBuildIndex(list);
+        const existingIndex = index.msgIdIndex.get(payload.msg_id);
+        // This event is a creation snapshot, not a text delta. The send ACK
+        // reconciliation may have already loaded this row (and a newer status).
+        if (existingIndex !== undefined && list[existingIndex]?.type === 'text') return list;
         return composeMessageWithIndex(
           {
             id: payload.msg_id,

@@ -103,7 +103,8 @@ vi.mock('@/common', () => ({
   },
 }));
 
-vi.mock('@/renderer/pages/conversation/utils/conversationCache', () => ({
+vi.mock('@/renderer/pages/conversation/utils/conversationCache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/renderer/pages/conversation/utils/conversationCache')>()),
   getConversationOrNull: (...args: unknown[]) => getConversationOrNullMock(...args),
 }));
 

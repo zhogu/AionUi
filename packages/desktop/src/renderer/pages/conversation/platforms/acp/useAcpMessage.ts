@@ -13,7 +13,11 @@ import type { IResponseMessage } from '@/common/adapter/ipcBridge';
 import type { TokenUsageBreakdown, TokenUsageData } from '@/common/config/storage';
 import { useMergeLiveMessage } from '@/renderer/pages/conversation/Messages/hooks';
 import { logStreamTerminalObserved } from '@/renderer/pages/conversation/runtime/useConversationRuntimeView';
-import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conversationCache';
+import {
+  getConversationOrNull,
+  subscribeConversationResync,
+} from '@/renderer/pages/conversation/utils/conversationCache';
+import { getConversationRuntimeViewSnapshot } from '@/renderer/pages/conversation/runtime/conversationRuntimeViewStore';
 import { isConversationProcessing } from '@/renderer/pages/conversation/utils/conversationRuntime';
 import { beginConversationTurn, endConversationTurn } from '@/renderer/pages/conversation/utils/conversationTurnClock';
 import { ensureConversationRuntime } from '@/renderer/pages/conversation/utils/ensureConversationRuntime';
@@ -124,6 +128,7 @@ export const useAcpMessage = (
 
   // Use refs to sync state for immediate access in event handlers
   const runningRef = useRef(running);
+  const streamRevision = useRef(0);
   const aiProcessingRef = useRef(aiProcessing);
 
   // Track whether current turn has content output
@@ -256,6 +261,7 @@ export const useAcpMessage = (
       if (conversation_id !== message.conversation_id) {
         return;
       }
+      streamRevision.current++;
 
       if (message.type === 'skill_suggest' || message.type === 'cron_trigger') {
         return;
@@ -612,68 +618,96 @@ export const useAcpMessage = (
     aiProcessingRef.current = false;
     setTurnStartedAtMs(null);
 
-    void getConversationOrNull(conversation_id)
-      .then((res) => {
-        if (cancelled) {
-          return;
-        }
+    let request = 0;
+    const hydrate = (recovery = false) => {
+      const currentRequest = ++request;
+      const snapshot = getConversationRuntimeViewSnapshot(conversation_id);
+      const revision = streamRevision.current;
+      void getConversationOrNull(conversation_id)
+        .then((res) => {
+          const current = getConversationRuntimeViewSnapshot(conversation_id);
+          if (
+            cancelled ||
+            currentRequest !== request ||
+            (recovery &&
+              (revision !== streamRevision.current ||
+                (!snapshot.localSubmitting && current.localSubmitting) ||
+                (current.activeTurnId !== null && current.activeTurnId !== snapshot.activeTurnId)))
+          ) {
+            return;
+          }
 
-        if (!res) {
+          if (!res) {
+            setRunning(false);
+            runningRef.current = false;
+            setAiProcessing(false);
+            aiProcessingRef.current = false;
+            endConversationTurn(conversation_id);
+            setHasHydratedRunningState(true);
+            return;
+          }
+          const isRunning = isConversationProcessing(res);
+          setRunning(isRunning);
+          runningRef.current = isRunning;
+          if (isRunning) {
+            setAiProcessing(true);
+            aiProcessingRef.current = true;
+            // Restore the persisted origin (fall back to now if the app was
+            // relaunched mid-turn and no origin was recorded this session).
+            setTurnStartedAtMs(beginConversationTurn(conversation_id));
+          } else {
+            // Turn ended while this conversation was in the background — drop
+            // the stale origin so the next turn starts from its own send time.
+            endConversationTurn(conversation_id);
+            if (recovery) {
+              setAiProcessing(false);
+              aiProcessingRef.current = false;
+              setTurnStartedAtMs(null);
+              turnFinishedRef.current = true;
+              activeThinkingRef.current = null;
+            }
+          }
+          setHasHydratedRunningState(true);
+
+          // Restore persisted context usage data
+          // Antigravity persists the same usage fields through this surface, so
+          // gating on `acp` alone loses its context meter on reload.
+          if ((res.type === 'acp' || res.type === 'antigravity') && res.extra?.last_token_usage) {
+            const { last_token_usage, last_context_limit } = res.extra;
+            if (last_token_usage.total_tokens > 0) {
+              setTokenUsage(last_token_usage);
+            }
+            if (last_context_limit && last_context_limit > 0) {
+              setContextLimit(last_context_limit);
+            }
+          }
+        })
+        .catch((error: unknown) => {
+          if (cancelled || currentRequest !== request) return;
+          if (recovery) {
+            console.warn('[useAcpMessage] Failed to reconcile conversation state:', error);
+            return;
+          }
           setRunning(false);
           runningRef.current = false;
           setAiProcessing(false);
           aiProcessingRef.current = false;
-          endConversationTurn(conversation_id);
           setHasHydratedRunningState(true);
-          return;
-        }
-        const isRunning = isConversationProcessing(res);
-        setRunning(isRunning);
-        runningRef.current = isRunning;
-        if (isRunning) {
-          setAiProcessing(true);
-          aiProcessingRef.current = true;
-          // Restore the persisted origin (fall back to now if the app was
-          // relaunched mid-turn and no origin was recorded this session).
-          setTurnStartedAtMs(beginConversationTurn(conversation_id));
-        } else {
-          // Turn ended while this conversation was in the background — drop
-          // the stale origin so the next turn starts from its own send time.
-          endConversationTurn(conversation_id);
-        }
-        setHasHydratedRunningState(true);
 
-        // Restore persisted context usage data
-        // Antigravity persists the same usage fields through this surface, so
-        // gating on `acp` alone loses its context meter on reload.
-        if ((res.type === 'acp' || res.type === 'antigravity') && res.extra?.last_token_usage) {
-          const { last_token_usage, last_context_limit } = res.extra;
-          if (last_token_usage.total_tokens > 0) {
-            setTokenUsage(last_token_usage);
+          if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+            console.warn('[useAcpMessage] Failed to hydrate conversation state:', error);
+            return;
           }
-          if (last_context_limit && last_context_limit > 0) {
-            setContextLimit(last_context_limit);
-          }
-        }
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setRunning(false);
-        runningRef.current = false;
-        setAiProcessing(false);
-        aiProcessingRef.current = false;
-        setHasHydratedRunningState(true);
 
-        if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-          console.warn('[useAcpMessage] Failed to hydrate conversation state:', error);
-          return;
-        }
-
-        throw error;
-      });
+          throw error;
+        });
+    };
+    const dispose = subscribeConversationResync(() => hydrate(true));
+    hydrate();
 
     return () => {
       cancelled = true;
+      dispose();
     };
   }, [conversation_id]);
 
