@@ -11,6 +11,7 @@
   "auto_handling_permissions": "Otomatik izin isteği işleme: {{request}}",
   "copy": "Kopyala",
   "copySuccess": "Başarıyla kopyalandı",
+  "copyReply": "Yanıtın tamamını kopyala",
   "copyFailed": "Kopyalama başarısız",
   "copyLastOutput.empty": "Henüz kopyalanacak bir yanıt yok",
   "copiedToClipboard": "Panoya kopyalandı",

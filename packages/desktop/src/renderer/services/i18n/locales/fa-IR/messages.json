@@ -11,6 +11,7 @@
   "auto_handling_permissions": "پردازش خودکار درخواست مجوز: {{request}}",
   "copy": "کپی",
   "copySuccess": "با موفقیت کپی شد",
+  "copyReply": "کپی کل پاسخ",
   "copyFailed": "کپی ناموفق بود",
   "copyLastOutput.empty": "هنوز پاسخی برای کپی وجود ندارد",
   "copiedToClipboard": "در کلیپ‌بورد کپی شد",

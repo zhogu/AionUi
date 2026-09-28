@@ -10,10 +10,9 @@ import { hasSkillSuggest, stripSkillSuggest } from './skillSuggestParser';
 /**
  * Turn-level copy support. An AI reply can be split into several stored text
  * messages (tool calls and thinking interleave and break the stream into
- * segments). The hover copy row appears once per turn, on the turn's LAST
- * text message — but copying only that message loses every earlier segment.
- * This module groups the timeline into turns so the button copies the whole
- * reply the user actually read.
+ * segments). In addition to each message's copy button, a separate whole-reply
+ * action appears on the turn's LAST text message. This module groups those
+ * segments without including tool output or thinking.
  */
 
 /** Structural subset of a processed timeline item the grouping needs. */

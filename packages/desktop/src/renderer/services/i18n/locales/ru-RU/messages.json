@@ -13,6 +13,7 @@
   "auto_handling_permissions": "Автоматическая обработка запроса разрешения: {{request}}",
   "copy": "Копировать",
   "copySuccess": "Успешно скопировано",
+  "copyReply": "Копировать весь ответ",
   "copyFailed": "Не удалось скопировать",
   "copyLastOutput.empty": "Пока нет ответа для копирования",
   "copiedToClipboard": "Скопировано в буфер обмена",

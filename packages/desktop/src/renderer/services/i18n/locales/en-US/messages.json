@@ -11,6 +11,7 @@
   "auto_handling_permissions": "Auto handling permission request: {{request}}",
   "copy": "Copy",
   "copySuccess": "Copied successfully",
+  "copyReply": "Copy whole reply",
   "copyFailed": "Failed to copy",
   "copyLastOutput.empty": "No response to copy yet",
   "copiedToClipboard": "Copied to clipboard",

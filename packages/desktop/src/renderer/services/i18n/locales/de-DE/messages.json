@@ -11,6 +11,7 @@
   "auto_handling_permissions": "Berechtigungsanfrage wird automatisch bearbeitet: {{request}}",
   "copy": "Kopieren",
   "copySuccess": "Erfolgreich kopiert",
+  "copyReply": "Gesamte Antwort kopieren",
   "copyFailed": "Kopieren fehlgeschlagen",
   "copyLastOutput.empty": "Noch keine Antwort zum Kopieren",
   "copiedToClipboard": "In die Zwischenablage kopiert",
