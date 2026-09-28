@@ -4,12 +4,15 @@ This branch contains a ready-to-deploy **Linux x86_64** build of AionUi Web
 2.2.2, rebuilt on 2026-09-28 with context-window selection, Copilot draft
 queuing, native session titles, configuration-command routing, verified session
 recovery, graceful idle shutdown, realtime message reconciliation, duplicate final
-message fixes and single-message copying. It also includes the mobile-client
+message fixes, single-message copying and CLI session ID display/copying from the
+conversation list's **… → CLI session ID** menu. The session dialog reads persisted
+metadata on demand without starting the agent; it works with built-in Copilot and
+the custom adapter (and other ACP sessions). It also includes the mobile-client
 task-completion changes from PR #3.
 The packaged `build-info.json` records the exact frontend/build source commit,
 backend source commit, backend checksum, build profile and build time.
-This package uses the verified AionCore `0af9d16` backend from the local
-deployment (Rust dev profile with debug information disabled and symbols stripped).
+This package uses AionCore `65bb22a`, including the session identity detail API
+(Rust dev profile with debug information disabled and symbols stripped).
 Logo assets are embedded even in dev builds, fixing AionCore issue #1009 on
 machines without the backend source checkout.
 No Node.js, Bun, dependency installation, or local build is required.
