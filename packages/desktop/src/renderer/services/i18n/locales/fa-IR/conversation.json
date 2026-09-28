@@ -20,6 +20,9 @@
     "skillsMarketDetails": "مشاهده بیشتر >>"
   },
   "history": {
+    "cliSessionId": "شناسه نشست CLI",
+    "cliSessionIdUnavailable": "شناسه نشست CLI هنوز موجود نیست. ممکن است نشست ایجاد نشده باشد یا نیاز به به‌روزرسانی بک‌اند باشد.",
+    "cliSessionIdFailed": "بارگیری شناسه نشست CLI ناموفق بود. پنجره را ببندید و دوباره تلاش کنید.",
     "recents": "اخیر",
     "noHistory": "تاریخچه چتی وجود ندارد",
     "deleteTitle": "حذف",

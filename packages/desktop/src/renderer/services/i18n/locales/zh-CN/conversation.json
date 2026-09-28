@@ -20,6 +20,9 @@
     "skillsMarketDetails": "详情 >>"
   },
   "history": {
+    "cliSessionId": "CLI 会话 ID",
+    "cliSessionIdUnavailable": "暂无 CLI 会话 ID。会话可能尚未创建，或后端需要更新。",
+    "cliSessionIdFailed": "读取 CLI 会话 ID 失败，请关闭后重试。",
     "recents": "最近",
     "noHistory": "暂无对话历史",
     "deleteTitle": "删除",
