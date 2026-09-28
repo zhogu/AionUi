@@ -10,10 +10,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IMessageAcpToolCall } from '@/common/chat/chatLib';
 import type { FileChangesPanelProps } from '@/renderer/components/base/FileChangesPanel';
 import MessageAcpToolCall from '@/renderer/pages/conversation/Messages/acp/MessageAcpToolCall';
+import { copyText } from '@/renderer/utils/ui/clipboard';
 
 const mockDownloadFileFromPath = vi.fn().mockResolvedValue(undefined);
 const mockMessageSuccess = vi.fn();
 const mockMessageError = vi.fn();
+
+vi.mock('@/renderer/utils/ui/clipboard', () => ({
+  copyText: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock('@/renderer/components/media/LocalImageView', () => ({
   __esModule: true,
@@ -43,6 +48,8 @@ vi.mock('@arco-design/web-react', () => ({
   Tooltip: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
   Message: {
     useMessage: () => [{ success: mockMessageSuccess, error: mockMessageError }, null],
+    success: (...args: unknown[]) => mockMessageSuccess(...args),
+    error: (...args: unknown[]) => mockMessageError(...args),
   },
 }));
 
@@ -99,6 +106,7 @@ describe('MessageAcpToolCall image output', () => {
     mockDownloadFileFromPath.mockResolvedValue(undefined);
     mockMessageSuccess.mockClear();
     mockMessageError.mockClear();
+    vi.mocked(copyText).mockClear();
   });
 
   it('renders nothing when update content is missing', () => {
@@ -431,6 +439,22 @@ describe('MessageAcpToolCall image output', () => {
     expect(screen.getByText('task_complete')).toBeInTheDocument();
     expect(screen.getByText('In Progress')).toBeInTheDocument();
     expect(screen.getByText(/Tool Call ID/)).toBeInTheDocument();
+  });
+
+  it.each(['raw_output', 'rawOutput'] as const)('copies a task_complete final answer from %s', async (outputKey) => {
+    const summary = '**Done**\n\n- First result\n- Second result';
+    render(
+      <MessageAcpToolCall
+        message={createMessage({
+          ...baseUpdate,
+          title: 'task_complete',
+          [outputKey]: { content: summary },
+        })}
+      />
+    );
+    screen.getByRole('button', { name: 'common.copy' }).click();
+    await waitFor(() => expect(copyText).toHaveBeenCalledWith(summary));
+    expect(mockMessageSuccess).toHaveBeenCalledWith('messages.copySuccess');
   });
 
   it('renders an empty diff content with fallback file metadata', () => {

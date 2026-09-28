@@ -1212,6 +1212,7 @@ export type I18nKey =
   | 'messages.copy'
   | 'messages.copyFailed'
   | 'messages.copyLastOutput.empty'
+  | 'messages.copyReply'
   | 'messages.copySuccess'
   | 'messages.delivery.pending'
   | 'messages.downloadFailed'

@@ -462,15 +462,8 @@ const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode }>
     );
   }, [artifacts, list]);
 
-  // An AI reply can be split into several messages (thinking / multiple text /
-  // tool blocks). The hover copy + timestamp row should appear once per turn,
-  // after the turn's last text — not under every intermediate text block.
-  // Collect the id of the last AI text in each turn; a turn runs until the next
-  // user (right) message. Tool/file/artifact items don't end a turn and, per the
-  // fallback strategy, the row stays on the turn's last text even when followed
-  // by tool blocks. While the conversation is still streaming, the final turn's
-  // row is withheld (it would otherwise appear then shift down as more text
-  // streams in); earlier, already-finished turns always keep their row.
+  // Every text message has its own copy button. Whole-reply copy and the
+  // timestamp/fork actions stay on the last text of each completed turn.
   const { copyRowIds: aiCopyRowTextIds, turnTextsById: aiTurnTextsById } = useMemo(
     () => collectAiCopyRows(processedList as TurnCopyItem[], isProcessing),
     [processedList, isProcessing]

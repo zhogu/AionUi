@@ -11,6 +11,7 @@
   "auto_handling_permissions": "권한 요청 자동 처리: {{request}}",
   "copy": "복사",
   "copySuccess": "성공적으로 복사됨",
+  "copyReply": "전체 답변 복사",
   "copyFailed": "복사 실패",
   "copyLastOutput.empty": "아직 복사할 응답이 없습니다",
   "copiedToClipboard": "클립보드에 복사됨",

@@ -17,6 +17,7 @@ import { createTwoFilesPatch } from 'diff';
 import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import MarkdownView from '@renderer/components/Markdown';
+import MessageCopyButton from '../components/MessageText/MessageCopyButton';
 
 const StatusTag: React.FC<{ status: string }> = ({ status }) => {
   const getTagProps = () => {
@@ -153,8 +154,11 @@ const MessageAcpToolCall: React.FC<{ message: IMessageAcpToolCall }> = ({ messag
 
   if (taskCompleteMarkdown) {
     return (
-      <div className='w-full min-w-0 mb-2'>
+      <div className='group w-full min-w-0 mb-2'>
         <MarkdownView>{taskCompleteMarkdown}</MarkdownView>
+        <div className='mt-4px'>
+          <MessageCopyButton text={taskCompleteMarkdown} />
+        </div>
       </div>
     );
   }

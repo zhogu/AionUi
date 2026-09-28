@@ -69,6 +69,7 @@ function getMessageIndexKey(message: TMessage): string | undefined {
   // update resolves to whatever frame was appended last and rewrites it.
   if (message.type === 'thinking') return `thinking:${message.msg_id}`;
   if (message.type === 'plan') return `plan:${message.msg_id}`;
+  if (message.type === 'text') return `text:${message.position ?? 'left'}:${message.msg_id}`;
   return message.msg_id;
 }
 
@@ -295,10 +296,25 @@ export function composeMessageWithIndex(
   // text message: merge only with the latest contiguous streaming chunk.
   // text 消息: 只与最后一条连续的流式片段合并，保留被工具/思考打断后的消息边界。
   if (message.type === 'text' && message.msg_id) {
-    const existingIdx = index.msgIdIndex.get(message.msg_id);
+    const textKey = getMessageIndexKey(message)!;
+    const existingIdx = index.msgIdIndex.get(textKey);
     if (existingIdx !== undefined && existingIdx < list.length) {
       const existingMsg = list[existingIdx];
       if (existingMsg.type === 'text') {
+        // Final overrides target a segment, not the current tail. Tool calls
+        // may follow that segment, and an empty hidden override retires it.
+        if (message.content.replace) {
+          const newList = list.slice();
+          newList[existingIdx] = {
+            ...existingMsg,
+            ...message,
+            id: existingMsg.id,
+            created_at: existingMsg.created_at,
+            hidden: message.hidden,
+            content: mergeTextMessageContent(existingMsg.content, message.content),
+          };
+          return newList;
+        }
         // User messages (right position) are complete — skip if already exists to prevent duplicates
         if (message.position === 'right') {
           return list;
@@ -310,7 +326,7 @@ export function composeMessageWithIndex(
       }
     }
 
-    if (last.type === 'text' && last.msg_id === message.msg_id) {
+    if (last.type === 'text' && getMessageIndexKey(last) === textKey) {
       const newList = list.slice();
       newList[newList.length - 1] = {
         ...last,
@@ -320,7 +336,7 @@ export function composeMessageWithIndex(
     }
 
     const newIdx = list.length;
-    index.msgIdIndex.set(message.msg_id, newIdx);
+    index.msgIdIndex.set(textKey, newIdx);
     return list.concat(message);
   }
 
@@ -785,6 +801,7 @@ export function normalizeDbMessage(msg: TMessage): TMessage {
 }
 
 const getMessageMergeKey = (message: TMessage): string => {
+  if (message.type === 'text') return getMessageIndexKey(message) ?? `id:${message.id}`;
   if (message.msg_id) return `${message.type}:${message.msg_id}`;
   return `id:${message.id}`;
 };
@@ -1053,7 +1070,7 @@ export const useMessageLstCache = (key: string) => {
 
       update((list) => {
         const index = getOrBuildIndex(list);
-        const existingIndex = index.msgIdIndex.get(payload.msg_id);
+        const existingIndex = index.msgIdIndex.get(`text:${payload.position ?? 'left'}:${payload.msg_id}`);
         // This event is a creation snapshot, not a text delta. The send ACK
         // reconciliation may have already loaded this row (and a newer status).
         if (existingIndex !== undefined && list[existingIndex]?.type === 'text') return list;

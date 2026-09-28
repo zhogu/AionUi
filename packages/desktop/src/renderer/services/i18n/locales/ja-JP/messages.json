@@ -11,6 +11,7 @@
   "auto_handling_permissions": "自動ハンドリング許可要求：{{request}}",
   "copy": "コピー",
   "copySuccess": "コピーしました",
+  "copyReply": "返信全体をコピー",
   "copyFailed": "コピーに失敗しました",
   "copyLastOutput.empty": "まだコピーできる応答がありません",
   "copiedToClipboard": "クリップボードにコピーしました",

@@ -473,6 +473,10 @@ Access from other devices: `http://YOUR_IP_ADDRESS:3000`
 
 ## Troubleshooting
 
+### Copying a single message
+
+Each user or assistant text message has a **Copy** button beneath it (shown on hover or keyboard focus on desktop, always visible on mobile). It copies only that message, keeping Markdown source and attachment paths while excluding hidden session metadata. Copilot's `task_complete` final answer also supports copying. For a completed reply split across several text messages, **Copy whole reply** remains available as a separate action on its last text message.
+
 ### Messages missing after a connection interruption
 
 Sending a message uses HTTP; live message updates use a separate WebSocket connection. A successful send can therefore reach the agent even while live updates are interrupted. Do not resend the prompt just because its bubble is delayed.
@@ -480,6 +484,8 @@ Sending a message uses HTTP; live message updates use a separate WebSocket conne
 Conversations reload their saved messages after a realtime reconnect, a network-online event, or returning to a visible browser tab; single-agent sends also trigger this reconciliation after the HTTP acknowledgement. Recovery fills gaps across history pages and merges messages by identity, without refreshing the whole page or resending requests. Reconnect and tab-resume recovery also reconcile the agent's running state. This does not restart the agent or its session.
 
 After a single-agent send is accepted, the frontend also ensures the shared WebSocket is connected. Open sockets are left alone; disconnected sockets reconnect using the existing transport, and connection attempts that have not opened within 10 seconds are retried with backoff. This is not a heartbeat health check: an `OPEN` socket is not forcibly replaced just because an agent has not produced output.
+
+Final text replacements update their original message segment, even when a tool call follows it; they do not append a second copy. Retired segments stay hidden when a stale history response arrives.
 
 ### Port Already in Use
 

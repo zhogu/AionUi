@@ -13,6 +13,7 @@
   "auto_handling_permissions": "Автоматична обробка запиту на дозвіл: {{request}}",
   "copy": "Копіювати",
   "copySuccess": "Скопійовано успішно",
+  "copyReply": "Копіювати всю відповідь",
   "copyFailed": "Не вдалося скопіювати",
   "copiedToClipboard": "Скопійовано в буфер обміну",
   "downloadSuccess": "Завантаження успішне",

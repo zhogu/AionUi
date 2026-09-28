@@ -5,19 +5,18 @@
  */
 
 import type { IMessageText } from '@/common/chat/chatLib';
-import { parseFileMarker, resolveMessageFilePath } from './fileMarker';
-import SessionMentionAction from './SessionMentionAction';
-import { parseSessionMessageBlock, parseSessionsBlock } from './sessionMarkers';
+import { parseFileMarker, resolveMessageFilePath } from '../fileMarker';
+import SessionMentionAction from '../SessionMentionAction';
+import { parseSessionMessageBlock, parseSessionsBlock } from '../sessionMarkers';
+import MessageCopyButton from './MessageCopyButton';
 import { useConversationContextSafe } from '@/renderer/hooks/context/ConversationContext';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
 import { useLocalFilePreview } from '@/renderer/pages/conversation/Preview/hooks/useLocalFilePreview';
 import { iconColors } from '@/renderer/styles/colors';
-import { Alert, Message, Tooltip } from '@arco-design/web-react';
-import { Copy } from '@icon-park/react';
+import { Tooltip } from '@arco-design/web-react';
 import classNames from 'classnames';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { copyText } from '@/renderer/utils/ui/clipboard';
 import CollapsibleContent from '@renderer/components/chat/CollapsibleContent';
 import FilePreview from '@renderer/components/media/FilePreview';
 import HorizontalFileList from '@renderer/components/media/HorizontalFileList';
@@ -51,9 +50,9 @@ export const formatMessageTime = (timestamp: number): string => {
   }
   return time;
 };
-import MessageCronBadge from './MessageCronBadge';
+import MessageCronBadge from '../MessageCronBadge';
 import { resolveAgentLogo, useAgentLogos } from '@/renderer/utils/model/agentLogo';
-import TeammateMessageAvatar from './TeammateMessageAvatar';
+import TeammateMessageAvatar from '../TeammateMessageAvatar';
 import { useTeammateColor } from '@/renderer/pages/team/identity/TeamIdentityContext';
 
 const CODE_STYLE = { marginTop: 4, marginBlock: 4 };
@@ -100,8 +99,7 @@ const MessageText: React.FC<{
   showCopyRow?: boolean;
   isLastMessage?: boolean;
   hasForkAnchor?: boolean;
-  /** All text segments of this message's turn, in order — the copy button
-   * copies the whole reply, not just the segment it happens to sit on. */
+  /** Optional whole-reply action, separate from copying this message. */
   turnTexts?: string[];
 }> = ({ message, showCopyRow = true, isLastMessage = false, hasForkAnchor = false, turnTexts }) => {
   const logos = useAgentLogos();
@@ -123,7 +121,6 @@ const MessageText: React.FC<{
   }, [message.content.content]);
 
   const { t } = useTranslation();
-  const [showCopyAlert, setShowCopyAlert] = useState(false);
   const isUserMessage = message.position === 'right';
   // Delivered-but-not-yet-consumed marker for messages sent mid-turn to a
   // supporting backend (claude/codex). The message already reached the
@@ -173,39 +170,15 @@ const MessageText: React.FC<{
     () => files.map((file_path) => resolveMessageFilePath(file_path, conversationContext?.workspace)),
     [conversationContext?.workspace, files]
   );
+  const teammateColor = useTeammateColor(isTeammateMessage ? senderConversationId : undefined);
 
   // 过滤空内容，避免渲染空DOM
   if (!message.content.content || (typeof message.content.content === 'string' && !message.content.content.trim())) {
     return null;
   }
 
-  const handleCopy = () => {
-    const baseText = shouldRenderPlainText ? renderedText : json ? JSON.stringify(data, null, 2) : renderedText;
-    const fileList = files.length ? `Files:\n${files.map((path) => `- ${path}`).join('\n')}\n\n` : '';
-    // An AI turn split by tool calls / thinking stores several text messages;
-    // the row sits on the last one but must copy the whole reply.
-    const textToCopy = turnTexts?.length ? buildTurnClipboardText(turnTexts) : fileList + baseText;
-    copyText(textToCopy)
-      .then(() => {
-        setShowCopyAlert(true);
-        setTimeout(() => setShowCopyAlert(false), 2000);
-      })
-      .catch(() => {
-        Message.error(t('common.copyFailed'));
-      });
-  };
-
-  const copyButton = (
-    <Tooltip content={t('common.copy', { defaultValue: 'Copy' })}>
-      <div
-        className='p-4px rd-4px cursor-pointer hover:bg-3 transition-colors opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto'
-        onClick={handleCopy}
-        style={{ lineHeight: 0 }}
-      >
-        <Copy theme='outline' size='16' fill={iconColors.secondary} />
-      </div>
-    </Tooltip>
-  );
+  const baseText = shouldRenderPlainText ? renderedText : json ? JSON.stringify(data, null, 2) : renderedText;
+  const fileList = files.length ? `Files:\n${files.map((path) => `- ${path}`).join('\n')}\n\n` : '';
 
   // Fork entry point: only when the agent declares the capability, and only on
   // messages the backend can actually fork at (any message for at_turn/codex,
@@ -230,8 +203,6 @@ const MessageText: React.FC<{
   const cronMeta = message.content.cronMeta;
   const displaySenderName = senderName === 'team_system' ? t('team.systemNotice.sender') : senderName;
   const fallbackBackendLogo = senderAgentType ? resolveAgentLogo(logos, { backend: senderAgentType }) : null;
-  // 团队 teammate 消息：按发送者会话取身份色，做气泡左色条 + 彩色发送者名；非团队场景为 undefined。
-  const teammateColor = useTeammateColor(isTeammateMessage ? senderConversationId : undefined);
 
   return (
     <>
@@ -350,36 +321,27 @@ const MessageText: React.FC<{
             {t('messages.delivery.pending', { defaultValue: 'Unread' })}
           </div>
         )}
-        {/* Hover-revealed copy + timestamp row. Mobile has no hover affordance,
-            so we drop the row entirely — system-level long-press still copies.
-            For AI replies split across several text messages, only the last text
-            of the turn shows this row (showCopyRow); user messages always do. */}
-        {!isMobile && showCopyRow && (
-          <div
-            className={classNames('h-32px flex items-center mt-4px gap-8px', {
-              'flex-row-reverse': isUserMessage,
-            })}
-          >
-            {copyButton}
-            {forkButton}
-            {message.created_at && (
-              <span className='text-12px text-t-secondary opacity-0 group-hover:opacity-100 transition-opacity select-none'>
-                {formatMessageTime(message.created_at)}
-              </span>
-            )}
-          </div>
-        )}
+        <div
+          className={classNames('min-h-32px flex flex-wrap items-center mt-4px gap-8px', {
+            'flex-row-reverse': isUserMessage,
+          })}
+        >
+          <MessageCopyButton text={fileList + baseText} />
+          {showCopyRow && (
+            <>
+              {turnTexts && turnTexts.length > 1 && (
+                <MessageCopyButton text={buildTurnClipboardText(turnTexts)} label={t('messages.copyReply')} />
+              )}
+              {!isMobile && forkButton}
+              {!isMobile && message.created_at && (
+                <span className='text-12px text-t-secondary opacity-0 group-hover:opacity-100 transition-opacity select-none'>
+                  {formatMessageTime(message.created_at)}
+                </span>
+              )}
+            </>
+          )}
+        </div>
       </div>
-      {showCopyAlert && (
-        <Alert
-          type='success'
-          content={t('messages.copySuccess')}
-          showIcon
-          className='fixed top-20px left-50% transform -translate-x-50% z-9999 w-max max-w-[80%]'
-          style={{ boxShadow: '0px 2px 12px rgba(0,0,0,0.12)' }}
-          closable={false}
-        />
-      )}
     </>
   );
 };

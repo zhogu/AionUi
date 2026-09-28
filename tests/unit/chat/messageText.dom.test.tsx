@@ -14,6 +14,13 @@ import MessageText, {
   parseTeamContextResetNotice,
 } from '@/renderer/pages/conversation/Messages/components/MessageText';
 import { copyText } from '@/renderer/utils/ui/clipboard';
+import { Message } from '@arco-design/web-react';
+import userEvent from '@testing-library/user-event';
+
+const layoutMock = vi.hoisted(() => ({ isMobile: false }));
+vi.mock('@/renderer/hooks/context/LayoutContext', () => ({
+  useLayoutContext: () => layoutMock,
+}));
 
 const previewMocks = vi.hoisted(() => ({
   openPreview: vi.fn(),
@@ -141,8 +148,19 @@ vi.mock('@/renderer/utils/ui/clipboard', () => ({
 
 vi.mock('@arco-design/web-react', () => ({
   Alert: () => null,
+  Button: ({
+    icon,
+    children,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement> & { icon?: React.ReactNode }) => (
+    <button {...props} type='button'>
+      {icon}
+      {children}
+    </button>
+  ),
   Message: {
     error: vi.fn(),
+    success: vi.fn(),
   },
   Tooltip: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
@@ -167,6 +185,9 @@ const fileMetadata = (path: string) => ({
 
 describe('MessageText attachment paths', () => {
   beforeEach(() => {
+    layoutMock.isMobile = false;
+    vi.mocked(Message.error).mockClear();
+    vi.mocked(Message.success).mockClear();
     mockFilePreview.mockClear();
     vi.mocked(copyText).mockClear();
     previewMocks.openPreview.mockClear();
@@ -205,7 +226,8 @@ describe('MessageText attachment paths', () => {
   const renderMessageText = (
     content: string,
     overrides: Partial<IMessageText> = {},
-    contentOverrides: Partial<IMessageText['content']> = {}
+    contentOverrides: Partial<IMessageText['content']> = {},
+    props: Pick<React.ComponentProps<typeof MessageText>, 'showCopyRow' | 'turnTexts'> = {}
   ) => {
     const message: IMessageText = {
       id: 'msg-marker',
@@ -223,7 +245,7 @@ describe('MessageText attachment paths', () => {
 
     render(
       <ConversationProvider value={{ conversationId: 'conv-1', workspace: '/workspace/demo', type: 'acp' }}>
-        <MessageText message={message} />
+        <MessageText message={message} {...props} />
       </ConversationProvider>
     );
   };
@@ -421,6 +443,46 @@ describe('MessageText attachment paths', () => {
     expect(screen.queryByTestId('file-preview')).not.toBeInTheDocument();
     expect(mockFilePreview).not.toHaveBeenCalled();
     expect(ipcBridge.fs.getFileMetadata.invoke).not.toHaveBeenCalled();
+  });
+
+  it.each(['left', 'right'] as const)('copies one %s message on mobile without hover', async (position) => {
+    layoutMock.isMobile = true;
+    renderMessageText('one message', { position });
+    const button = screen.getByRole('button', { name: 'common.copy' });
+    expect(button).not.toHaveClass('opacity-0');
+    fireEvent.click(button);
+    await waitFor(() => expect(copyText).toHaveBeenCalledWith('one message'));
+  });
+
+  it('copies only this segment and keeps whole-reply copy as a separate action', async () => {
+    renderMessageText('second **segment**', {}, {}, { turnTexts: ['first segment', 'second **segment**'] });
+    fireEvent.click(screen.getByRole('button', { name: 'common.copy' }));
+    await waitFor(() => expect(copyText).toHaveBeenLastCalledWith('second **segment**'));
+    fireEvent.click(screen.getByRole('button', { name: 'messages.copyReply' }));
+    await waitFor(() => expect(copyText).toHaveBeenLastCalledWith('first segment\n\nsecond **segment**'));
+  });
+
+  it('allows keyboard copying of intermediate and streaming segments without turn actions', async () => {
+    renderMessageText('streaming text', {}, {}, { showCopyRow: false });
+    const button = screen.getByRole('button', { name: 'common.copy' });
+    button.focus();
+    expect(button).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(copyText).toHaveBeenCalledWith('streaming text'));
+  });
+
+  it('copies visible user text and attachment paths without the internal marker', async () => {
+    renderMessageText('look at this\n\n[[AION_FILES]]\nuploads/photo.png', { position: 'right' });
+    fireEvent.click(screen.getByRole('button', { name: 'common.copy' }));
+    await waitFor(() => expect(copyText).toHaveBeenCalledWith('Files:\n- uploads/photo.png\n\nlook at this'));
+  });
+
+  it('reports clipboard failure instead of showing success', async () => {
+    vi.mocked(copyText).mockRejectedValueOnce(new Error('clipboard denied'));
+    renderMessageText('answer');
+    fireEvent.click(screen.getByRole('button', { name: 'common.copy' }));
+    await waitFor(() => expect(Message.error).toHaveBeenCalledWith('common.copyFailed'));
+    expect(Message.success).not.toHaveBeenCalled();
   });
 
   it('copies complete assistant marker text', async () => {
