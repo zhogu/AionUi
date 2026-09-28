@@ -1,11 +1,11 @@
 {
   "version": "2.2.2",
-  "sourceCommit": "fbb52c63c8c04356c15ad81c204c4f76acb25cd6",
+  "sourceCommit": "066aef1c64b1fb0ece37299c056f55d5fe9b6cf4",
   "platform": "linux",
   "arch": "x64",
-  "builtAt": "2026-09-24T11:34:51.637Z",
+  "builtAt": "2026-09-28T15:28:01.284Z",
   "optionalCopilotAdapter": "copilot-acp",
-  "backendSourceCommit": "0f0164aedb72089d2d67480bed332735a9485bb5",
+  "backendSourceCommit": "0af9d165e90f5c6fbe624d0b84356d6924914927",
   "backendProfile": "dev, debug=0, stripped",
-  "backendSha256": "01c95078b7978ae51df848912b54eb43e5b1f0b35cf519a433efb954134f7e4e"
+  "backendSha256": "63fc9684eda5ed691bc3f6625b75e1b068ef5879bb3e143ff6d8013b2061d0c8"
 }

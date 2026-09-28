@@ -1,14 +1,17 @@
 # AionUi Web prebuilt package
 
 This branch contains a ready-to-deploy **Linux x86_64** build of AionUi Web
-2.2.2, rebuilt on 2026-09-24 with context-window selection, Copilot draft
+2.2.2, rebuilt on 2026-09-28 with context-window selection, Copilot draft
 queuing, native session titles, configuration-command routing, verified session
-recovery, graceful idle shutdown and realtime message reconciliation. It also includes the mobile-client
+recovery, graceful idle shutdown, realtime message reconciliation, duplicate final
+message fixes and single-message copying. It also includes the mobile-client
 task-completion changes from PR #3.
 The packaged `build-info.json` records the exact frontend/build source commit,
 backend source commit, backend checksum, build profile and build time.
-This package uses the verified AionCore `0f0164a` backend from the local
+This package uses the verified AionCore `0af9d16` backend from the local
 deployment (Rust dev profile with debug information disabled and symbols stripped).
+Logo assets are embedded even in dev builds, fixing AionCore issue #1009 on
+machines without the backend source checkout.
 No Node.js, Bun, dependency installation, or local build is required.
 Native Copilot CLI must still be installed and authenticated separately.
 
@@ -111,6 +114,11 @@ prompts or restarting the agent. History gaps spanning multiple pages are filled
 and duplicate user-message notifications are ignored.
 
 This build does not add heartbeat-based detection of half-open sockets.
+
+Final text replacements update their original segment instead of appending a
+duplicate after tool calls. Each user/assistant text message and Copilot
+`task_complete` answer has a copy button: hover or focus on desktop, always visible
+on mobile. Whole-reply copying remains a separate action for split replies.
 
 ## Mobile scope
 
