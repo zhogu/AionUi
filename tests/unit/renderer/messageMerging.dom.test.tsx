@@ -179,11 +179,73 @@ describe('message merging', () => {
     expect((result.current.messages[2] as IMessageText).content.content).toBe('again');
   });
 
-  it('keeps thinking segments split when tool calls interrupt the same msg_id stream', async () => {
-    const { result } = renderHook(() => useMessageHarness(), {
-      wrapper: TestWrapper,
+  it('replaces a finalized text segment in place even after a tool sharing its stream id', async () => {
+    const { result } = renderHook(useMessageHarness, { wrapper: TestWrapper });
+    act(() => {
+      result.current.addOrUpdateMessage(createTextMessage('segment-1', 'draft'));
+      result.current.addOrUpdateMessage({ ...createToolCallMessage('tool-1'), msg_id: 'segment-1' });
+      result.current.addOrUpdateMessage(createTextMessage('segment-2', 'later segment'));
     });
+    await flushMessageQueue();
+    const originalId = result.current.messages[0].id;
+    act(() => {
+      result.current.addOrUpdateMessage({
+        ...createTextMessage('segment-1', 'complete answer'),
+        content: { content: 'complete answer', replace: true },
+      });
+      result.current.addOrUpdateMessage({
+        ...createTextMessage('segment-2', ''),
+        hidden: true,
+        content: { content: '', replace: true },
+      });
+    });
+    await flushMessageQueue();
+    expect(result.current.messages.filter((message) => message.type === 'text' && !message.hidden)).toEqual([
+      expect.objectContaining({
+        id: originalId,
+        msg_id: 'segment-1',
+        content: { content: 'complete answer', replace: true },
+      }),
+    ]);
+    expect(result.current.messages).toHaveLength(3);
+  });
 
+  it('keeps a replacement hidden when a stale history snapshot arrives later', async () => {
+    const { result } = renderHook(useAnchorMessageHarness, { wrapper: TestWrapper });
+    act(() => {
+      result.current.addOrUpdateMessage(createTextMessage('segment-1', 'old text'));
+      result.current.addOrUpdateMessage({
+        ...createTextMessage('segment-1', ''),
+        hidden: true,
+        content: { content: '', replace: true },
+      });
+    });
+    await flushMessageQueue();
+    act(() => {
+      result.current.replaceWithAnchorWindow(CONVERSATION_ID, [createTextMessage('segment-1', 'old text')]);
+    });
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0].hidden).toBe(true);
+  });
+
+  it('does not mix user and assistant messages when their stream ids coincide', async () => {
+    const { result } = renderHook(useMessageHarness, { wrapper: TestWrapper });
+    act(() => {
+      result.current.addOrUpdateMessage({ ...createTextMessage('shared', 'question'), position: 'right' });
+      result.current.addOrUpdateMessage(createTextMessage('shared', 'answer'));
+      result.current.addOrUpdateMessage({ ...createTextMessage('shared', 'question'), position: 'right' });
+    });
+    await flushMessageQueue();
+    expect(
+      result.current.messages.map((message) => [message.position, (message as IMessageText).content.content])
+    ).toEqual([
+      ['right', 'question'],
+      ['left', 'answer'],
+    ]);
+  });
+
+  it('keeps thinking segments split when tool calls interrupt the same msg_id stream', async () => {
+    const { result } = renderHook(useMessageHarness, { wrapper: TestWrapper });
     act(() => {
       result.current.addOrUpdateMessage(createThinkingMessage('msg-1', 'alpha'));
       result.current.addOrUpdateMessage(createThinkingMessage('msg-1', 'beta'));
