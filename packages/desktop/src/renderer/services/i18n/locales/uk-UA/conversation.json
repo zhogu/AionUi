@@ -20,6 +20,9 @@
     "skillsMarketDetails": "Докладніше >>"
   },
   "history": {
+    "cliSessionId": "ID сеансу CLI",
+    "cliSessionIdUnavailable": "ID сеансу CLI поки недоступний. Можливо, сеанс ще не створено або потрібне оновлення бекенду.",
+    "cliSessionIdFailed": "Не вдалося завантажити ID сеансу CLI. Закрийте вікно та спробуйте знову.",
     "recents": "Недавні",
     "noHistory": "Немає історії чатів",
     "deleteTitle": "Видалити",

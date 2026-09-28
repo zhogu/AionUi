@@ -20,6 +20,9 @@
     "skillsMarketDetails": "View More >>"
   },
   "history": {
+    "cliSessionId": "CLI session ID",
+    "cliSessionIdUnavailable": "No CLI session ID is available yet. The session may not have been created, or the backend needs updating.",
+    "cliSessionIdFailed": "Failed to load the CLI session ID. Close and try again.",
     "recents": "Recents",
     "noHistory": "No chat history",
     "deleteTitle": "Delete",

@@ -473,6 +473,15 @@ Access from other devices: `http://YOUR_IP_ADDRESS:3000`
 
 ## Troubleshooting
 
+### Viewing a Copilot CLI session ID
+
+In the conversation list, open **… → CLI session ID** to display and copy the
+persisted backend session ID. This is available for ACP conversations, including
+built-in Copilot and the optional Copilot adapter; it is not the AionUi conversation
+ID in the URL. The dialog reads current session metadata without starting or
+reconnecting the agent. A missing ID is shown explicitly with copying disabled.
+This requires a backend that exposes `backend_session_id` on conversation detail.
+
 ### Copying a single message
 
 Each user or assistant text message has a **Copy** button beneath it (shown on hover or keyboard focus on desktop, always visible on mobile). It copies only that message, keeping Markdown source and attachment paths while excluding hidden session metadata. Copilot's `task_complete` final answer also supports copying. For a completed reply split across several text messages, **Copy whole reply** remains available as a separate action on its last text message.

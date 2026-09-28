@@ -20,6 +20,9 @@
     "skillsMarketDetails": "Ayrıntılar >>"
   },
   "history": {
+    "cliSessionId": "CLI oturum kimliği",
+    "cliSessionIdUnavailable": "CLI oturum kimliği henüz yok. Oturum oluşturulmamış olabilir veya arka uç güncellemesi gerekebilir.",
+    "cliSessionIdFailed": "CLI oturum kimliği yüklenemedi. Kapatıp tekrar deneyin.",
     "recents": "Son",
     "today": "Bugün",
     "yesterday": "Dün",

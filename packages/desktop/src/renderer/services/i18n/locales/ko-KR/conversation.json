@@ -20,6 +20,9 @@
     "skillsMarketDetails": "자세히 >>"
   },
   "history": {
+    "cliSessionId": "CLI 세션 ID",
+    "cliSessionIdUnavailable": "CLI 세션 ID가 아직 없습니다. 세션이 생성되지 않았거나 백엔드 업데이트가 필요할 수 있습니다.",
+    "cliSessionIdFailed": "CLI 세션 ID를 불러오지 못했습니다. 닫은 후 다시 시도하세요.",
     "recents": "최근",
     "today": "오늘",
     "yesterday": "어제",

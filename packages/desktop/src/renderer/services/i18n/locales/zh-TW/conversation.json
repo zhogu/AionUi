@@ -20,6 +20,9 @@
     "skillsMarketDetails": "詳情 >>"
   },
   "history": {
+    "cliSessionId": "CLI 工作階段 ID",
+    "cliSessionIdUnavailable": "暫無 CLI 工作階段 ID。工作階段可能尚未建立，或後端需要更新。",
+    "cliSessionIdFailed": "讀取 CLI 工作階段 ID 失敗，請關閉後重試。",
     "recents": "最近",
     "today": "今天",
     "yesterday": "昨天",

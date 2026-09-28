@@ -20,6 +20,9 @@
     "skillsMarketDetails": "詳細 >>"
   },
   "history": {
+    "cliSessionId": "CLI セッション ID",
+    "cliSessionIdUnavailable": "CLI セッション ID はまだありません。セッションが未作成か、バックエンドの更新が必要です。",
+    "cliSessionIdFailed": "CLI セッション ID を取得できませんでした。閉じて再試行してください。",
     "recents": "最近",
     "today": "今日",
     "yesterday": "昨日",

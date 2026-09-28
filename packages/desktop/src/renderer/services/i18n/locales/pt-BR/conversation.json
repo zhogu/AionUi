@@ -20,6 +20,9 @@
     "skillsMarketDetails": "Ver Mais >>"
   },
   "history": {
+    "cliSessionId": "ID da sessão CLI",
+    "cliSessionIdUnavailable": "Ainda não há ID da sessão CLI. A sessão pode não ter sido criada ou o backend precisa ser atualizado.",
+    "cliSessionIdFailed": "Falha ao carregar o ID da sessão CLI. Feche e tente novamente.",
     "recents": "Recentes",
     "noHistory": "Nenhum histórico de chat",
     "deleteTitle": "Excluir",

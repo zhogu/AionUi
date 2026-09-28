@@ -20,6 +20,9 @@
     "skillsMarketDetails": "Mehr anzeigen >>"
   },
   "history": {
+    "cliSessionId": "CLI-Sitzungs-ID",
+    "cliSessionIdUnavailable": "Noch keine CLI-Sitzungs-ID verfügbar. Die Sitzung wurde möglicherweise noch nicht erstellt oder das Backend muss aktualisiert werden.",
+    "cliSessionIdFailed": "CLI-Sitzungs-ID konnte nicht geladen werden. Schließen und erneut versuchen.",
     "recents": "Zuletzt",
     "noHistory": "Kein Chatverlauf",
     "deleteTitle": "Löschen",
