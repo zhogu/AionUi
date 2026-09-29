@@ -1,7 +1,7 @@
 # AionUi Web prebuilt package
 
 This branch contains a ready-to-deploy **Linux x86_64** build of AionUi Web
-2.2.2, rebuilt on 2026-09-28 with context-window selection, Copilot draft
+2.2.2, rebuilt on 2026-09-29 with initial Copilot Allow all selection, context-window selection, Copilot draft
 queuing, native session titles, configuration-command routing, verified session
 recovery, graceful idle shutdown, realtime message reconciliation, duplicate final
 message fixes, single-message copying and CLI session ID display/copying from the
@@ -235,7 +235,7 @@ sha256sum "$INSTALL_DIR/bundled-aioncore/linux-x64/aioncore"
 ```
 
 The hash must match `backendSha256` in that installation's `build-info.json`.
-For the 2026-09-28 package documented here, `backendSourceCommit` is
+For the 2026-09-29 package documented here (unchanged backend), `backendSourceCommit` is
 `65bb22a8447e5350645b29e6b1883710732acf13`; its backend SHA-256 is
 `e2b5af59b96d96b03e7f1111004d89d0c66ad11314937d439bd4c143d7263656`.
 The visible version `2.2.2` alone cannot distinguish our rebuilds.
@@ -321,6 +321,22 @@ custom adapter does not inherit that backend-specific default; its existing
 Draft box can be switched to automatic mode explicitly.
 
 ## Session lifecycle and recovery
+
+### Initial Copilot permissions
+
+On the new-conversation page, **Allow all** is a separate control beside the mode
+selector; mobile users can select it in the **+** action sheet. It defaults to
+**Off** for each new creation page and resets when switching assistants. Enabling
+it automatically approves tool, path and URL requests in the new session; use it
+only for trusted work. It does not change agent/plan/autopilot mode.
+
+Both built-in Copilot and the custom adapter are supported when their cached
+capabilities advertise `allow_all`. If the control is missing, test the saved
+agent's connection in Settings to refresh its capabilities. Creation starts the
+runtime and confirms the selected setting before sending the first message,
+including for empty conversations. A failed or unconfirmed setting blocks the
+first message and displays an error. Existing sessions and global CLI settings
+are not changed.
 
 Normal idle collection closes the ACP transport before terminating the process,
 allowing the custom adapter to stop its native child and release its session
