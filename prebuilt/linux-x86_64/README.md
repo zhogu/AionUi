@@ -18,6 +18,9 @@ machines without the backend source checkout.
 No Node.js, Bun, dependency installation, or local build is required.
 Native Copilot CLI must still be installed and authenticated separately.
 
+Deployment sections: [Install](#install), [Upgrade](#upgrade-an-existing-service),
+[nginx / HTTPS](#nginx--https), [Missing icons](#diagnosing-missing-icons).
+
 ## Install
 
 ```bash
@@ -46,6 +49,233 @@ Use `INSTALL_DIR` and `BIN_DIR` to override those paths:
 ```bash
 INSTALL_DIR=/opt/aionui-web BIN_DIR=/usr/local/bin bash install.sh
 ```
+
+Run the installer as the account that owns the installation, not with `sudo`
+unless you intentionally use system-wide paths. Use `sudo` only for service/nginx
+management. The default data directory is `~/.aionui-web`, outside the installation;
+keep your existing `--data-dir` / `AIONUI_DATA_DIR` settings when upgrading.
+Do not put conversation data inside `INSTALL_DIR`.
+
+The installation contains:
+
+```text
+~/.local/share/aionui-web/
+├── aionui-web
+├── copilot-acp
+├── build-info.json
+├── static/                              # Browser JS/CSS and frontend assets
+└── bundled-aioncore/linux-x64/aioncore   # Backend, with logo bytes embedded
+```
+
+**`/api/assets/logos/tools/github.svg` is a backend HTTP endpoint, not a file
+under `static/`.** There is deliberately no requirement for a separate
+`tools/github.svg` file in the installation. The bundled backend serves these
+logos without an AionCore source checkout. Do not copy only `static/`, point nginx
+at a source-tree logo directory, or download individual logos as an upgrade fix.
+
+The installer checks the archive checksum, backs up the previous installation
+beside it as `aionui-web.backup.<timestamp>`, and replaces the installation as a
+unit. It does **not** configure systemd, nginx, TLS certificates, firewall rules,
+or agent authentication. The archive checksum validates the downloaded package,
+not which executable an already-running service is using.
+
+## Upgrade an existing service
+
+Wait for running requests to finish: stopping the service interrupts active work.
+For an existing systemd service named `aionui-webui.service`, run as the same
+installation owner (adjust the checkout, service name and install paths if needed):
+
+```bash
+(
+  set -e
+  cd ~/repo/AionUI-build
+  git switch build
+  git pull --ff-only origin build
+  sudo systemctl stop aionui-webui.service
+  bash prebuilt/linux-x86_64/install.sh
+  sudo systemctl start aionui-webui.service
+  sudo systemctl status aionui-webui.service --no-pager -l
+)
+```
+
+If installation fails, the block stops before starting the service. Inspect the
+error and retain the backup; do not remove data directories. Installation backups
+are **not database backups**. Use your normal data backup procedure before upgrades.
+
+Check `sudo systemctl cat aionui-webui.service` locally: `ExecStart` must reference
+the intended installation. `--backend-bin` or `AIONUI_BACKEND_BIN` can override the
+bundled backend, and `--static-dir` can select an old renderer. Updating the package
+does not change those overrides. Startup logs print the resolved `backend bin`
+and `static dir`; inspect them without sharing credentials from unit files/logs.
+Restart after replacement, then reload the browser.
+
+## nginx / HTTPS
+
+### Requirements
+
+Use a dedicated hostname, for example `aionui.example.com`, with the application
+at the hostname's **root `/`**. Run nginx on the same host as WebUI for the example
+below. WebUI listens on `127.0.0.1:25808` by default; `--remote` is not needed for
+a same-host reverse proxy. Do not expose that port publicly to bypass HTTPS or
+access controls. A containerized nginx needs a reachable, private upstream address
+instead of its own container's `127.0.0.1`.
+
+Proxy to the **WebUI port**, not the backend's internal dynamically chosen port.
+Preserve the URI, query string, cookies, authorization headers and WebSocket
+upgrade. HTTPS is also needed for reliable browser clipboard access outside
+localhost.
+
+| Browser path                               | Destination / purpose                 |
+| ------------------------------------------ | ------------------------------------- |
+| `/` and frontend files such as `/assets/*` | WebUI HTML, JS, CSS and static assets |
+| `/api/*`, including `/api/assets/logos/*`  | WebUI forwards to the bundled backend |
+| `/login`, `/logout`                        | Backend authentication, via WebUI     |
+| `/ws`, `/api/stt/stream`                   | WebSocket/stream upgrades, via WebUI  |
+
+Do not handle `/api/assets/logos/*.svg` with `root`, `alias`, `try_files`, or a
+generic `location ~* \.(svg|png|...)` static-file rule. Do not replace upstream
+API errors with `index.html`; an HTML response with status 200 is not an SVG.
+
+### Dedicated-host example
+
+This configuration belongs inside nginx's `http {}` context (for example an
+included `/etc/nginx/conf.d/aionui.conf`). Replace the hostname and certificate
+paths with your actual values; provision a valid certificate separately before
+running `nginx -t`. If you already have an equivalent WebSocket `map`, reuse it
+instead of defining it twice. Do not replace unrelated virtual hosts.
+
+```nginx
+map $http_upgrade $aionui_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    server_name aionui.example.com;
+    return 301 https://aionui.example.com$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name aionui.example.com;
+    ssl_certificate     /etc/letsencrypt/live/aionui.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/aionui.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    client_max_body_size 100m;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $aionui_connection_upgrade;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_intercept_errors off;
+
+    # ^~ prevents a generic extension regex from capturing API logo requests.
+    location ^~ /api/ {
+        proxy_pass http://127.0.0.1:25808;
+    }
+
+    # Includes frontend assets, /login, /logout and /ws.
+    location ^~ / {
+        proxy_pass http://127.0.0.1:25808;
+    }
+}
+```
+
+There is **no trailing URI `/`** after the upstream address in `proxy_pass`;
+in particular, do not strip `/api/`. If adding locations later, check nginx's
+location precedence and header inheritance rather than assuming this catch-all
+still handles them. Adjust upload limits/timeouts to your needs; long timeouts do
+not provide heartbeat detection for half-open WebSockets.
+
+Apply only after checking syntax:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### `/aionui` entry pages and authentication
+
+This build is not a complete path-prefixed application. A landing page or iframe
+at `/aionui` does **not** move the application's requests under `/aionui/`.
+The iframe document's origin and URL determine where its root-relative
+`/api/`, `/assets/`, `/ws`, `/login` and `/logout` requests go.
+Proxying only `location /aionui/` is therefore insufficient. Prefer a dedicated
+hostname with the configuration above. A simple `/aionui` entry link can redirect
+to `/`; that is an entry alias, not subpath isolation. If retaining an existing
+same-origin iframe wrapper, the application root routes must still reach WebUI;
+resolve any conflicts with other apps instead of adding blind path rewrites.
+
+The example uses AionUi's own login and does not add nginx Basic authentication.
+If your environment already uses Basic auth or another gateway, verify access to
+**all** application paths and WebSocket handshakes after both gateway and AionUi
+login. Basic and Bearer authentication can compete for the `Authorization`
+header; do not blindly overwrite or clear it. Do not disable authentication on
+all of `/api/` as an icon workaround.
+
+An unauthenticated curl receiving `401` with `WWW-Authenticate: Basic` only proves
+the gateway requires authentication. It does **not** prove the package lacks icons
+or that an authenticated browser's failure has the same cause.
+
+## Diagnosing missing icons
+
+First compare the installed package metadata and backend hash:
+
+```bash
+INSTALL_DIR="${HOME}/.local/share/aionui-web"
+cat "$INSTALL_DIR/build-info.json"
+sha256sum "$INSTALL_DIR/bundled-aioncore/linux-x64/aioncore"
+```
+
+The hash must match `backendSha256` in that installation's `build-info.json`.
+For the 2026-09-28 package documented here, `backendSourceCommit` is
+`65bb22a8447e5350645b29e6b1883710732acf13`; its backend SHA-256 is
+`e2b5af59b96d96b03e7f1111004d89d0c66ad11314937d439bd4c143d7263656`.
+The visible version `2.2.2` alone cannot distinguish our rebuilds.
+Also check the running service's executable/overrides as described above:
+metadata on disk does not prove the process has restarted.
+
+On the target machine, compare the same path directly and via nginx:
+
+```bash
+curl -sS -i --max-time 15 \
+  http://127.0.0.1:25808/api/assets/logos/tools/github.svg
+curl -sS -i --max-time 15 \
+  https://aionui.example.com/api/assets/logos/tools/github.svg
+```
+
+For a Basic-auth gateway, repeat the second command with `--user YOUR_USERNAME`;
+curl prompts for the password rather than putting it in shell history. Do not
+share passwords, cookies or authorization headers. In the browser's Network tab,
+inspect the **actual failed request** while logged in, including its URL, status,
+content type and response.
+
+| Result                               | Next check                                                                                |
+| ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Direct 200 SVG, public 404 or HTML   | nginx location matching, URI rewriting, wrong virtual host/upstream                       |
+| Direct 200 SVG, public 401/403       | Gateway/application authentication; distinguish authenticated browser from anonymous curl |
+| Direct 404 for the known GitHub logo | Running backend version/path; upgrade the whole package and restart if stale              |
+| 502/connection failure               | WebUI/backend process, upstream port and service logs                                     |
+| 200 `text/html`                      | Wrong route or SPA fallback; not a valid icon response                                    |
+| Both return 200 SVG                  | Browser request URL, authentication, cache, CSP/mixed-content errors                      |
+
+Expected response: `200`, `Content-Type: image/svg+xml`, and an SVG body.
+Known logos also include `/api/assets/logos/brand/aion.svg` and
+`/api/assets/logos/ai-major/claude.svg`. A conditional cache request can validly
+return `304`; a nonexistent logo should return backend `404 NOT_FOUND`.
+
+The current split archive was reconstructed and installed into an isolated
+directory, then its backend was copied to a temporary location with fresh data:
+all three known logos returned SVG, ETag/cache headers and valid 304 responses.
+No AionCore source-tree logo directory is required at runtime. This verifies the
+package, not a different machine's deployed process or nginx configuration.
 
 ## Enable context selection
 
