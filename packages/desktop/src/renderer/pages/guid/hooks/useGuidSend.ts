@@ -39,6 +39,7 @@ export type GuidSendDeps = {
   thoughtLevelOptionId?: string;
   selectedContextWindowValue?: string;
   contextWindowOptionId?: string;
+  initialAllowAll?: { id: string; value: string };
   current_model: TProviderWithModel | undefined;
 
   guidDisabledBuiltinSkills: string[] | undefined;
@@ -89,6 +90,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     thoughtLevelOptionId,
     selectedContextWindowValue,
     contextWindowOptionId,
+    initialAllowAll,
     current_model,
     guidDisabledBuiltinSkills,
     guidEnabledSkills,
@@ -263,9 +265,10 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
       const initialConfig = [
         { id: thoughtLevelOptionId, value: selectedThoughtLevelValue },
         { id: contextWindowOptionId, value: selectedContextWindowValue },
+        ...(initialAllowAll ? [initialAllowAll] : []),
       ].filter((option): option is { id: string; value: string } => Boolean(option.id && option.value));
       if (initialConfig.length > 0) {
-        // Older cores do not apply thought-level creation overrides. Confirm both before the first prompt.
+        // Confirm every requested setting before handing off the first prompt.
         await ensureConversationRuntime(conversation.id);
         for (const option of initialConfig) {
           const response = await ipcBridge.acpConversation.setConfigOption.invoke({
@@ -320,6 +323,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     thoughtLevelOptionId,
     selectedContextWindowValue,
     contextWindowOptionId,
+    initialAllowAll,
     current_model,
     guidDisabledBuiltinSkills,
     guidEnabledSkills,

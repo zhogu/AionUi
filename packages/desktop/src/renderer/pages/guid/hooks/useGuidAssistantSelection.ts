@@ -14,6 +14,7 @@ import {
   buildAgentRuntimeSlashCommands,
   buildAgentRuntimeThoughtLevelOption,
   buildAgentRuntimeContextWindowOption,
+  buildAgentRuntimeAllowAllOption,
   type AgentRuntimeCatalog,
   type AgentRuntimeDerivedOption,
 } from '@/renderer/utils/model/agentRuntimeCatalog';
@@ -53,6 +54,9 @@ export type GuidAssistantSelectionResult = {
   currentContextWindowOption: AgentRuntimeDerivedOption | null;
   selectedContextWindowValue: string;
   setSelectedContextWindowValue: (value: string) => void;
+  allowAllOption: ReturnType<typeof buildAgentRuntimeAllowAllOption>;
+  allowAll: boolean;
+  setAllowAll: (enabled: boolean) => void;
 };
 
 export function resolveInitialAssistantModel(models: string[]): string | null {
@@ -130,6 +134,7 @@ export const useGuidAssistantSelection = ({
   const [selectedAcpModel, _setSelectedAcpModel] = useState<string | null>(null);
   const [selectedThoughtLevelValue, _setSelectedThoughtLevelValue] = useState<string>('');
   const [contextSelection, setContextSelection] = useState({ scope: '', value: '' });
+  const [allowAllSelection, setAllowAllSelection] = useState({ scope: '', enabled: false });
   const { assistants } = useCustomAgentsLoader();
   const managedAgentRuntimeCatalog = useManagedAgentRuntimeCatalog();
 
@@ -230,6 +235,20 @@ export const useGuidAssistantSelection = ({
     () => buildAgentRuntimeModelInfo(selectedManagedAgentRuntimeCatalog),
     [selectedManagedAgentRuntimeCatalog]
   );
+  const allowAllOption = useMemo(
+    () =>
+      selectedAssistantBackend === 'copilot' ||
+      (selectedAssistant?.agent?.type === 'acp' && selectedAssistant.agent.source === 'custom')
+        ? buildAgentRuntimeAllowAllOption(selectedManagedAgentRuntimeCatalog)
+        : null,
+    [selectedAssistantBackend, selectedAssistant?.agent, selectedManagedAgentRuntimeCatalog]
+  );
+  const allowAllScope = JSON.stringify([selectedAssistantId, locationKey, allowAllOption]);
+  const allowAll = Boolean(allowAllOption && allowAllSelection.scope === allowAllScope && allowAllSelection.enabled);
+  const setAllowAll = (enabled: boolean) => setAllowAllSelection({ scope: allowAllScope, enabled });
+  useEffect(() => {
+    setAllowAllSelection({ scope: allowAllScope, enabled: false });
+  }, [allowAllScope]);
   const currentAgentAvailableCommands = useMemo(
     () => buildAgentRuntimeSlashCommands(selectedManagedAgentRuntimeCatalog),
     [selectedManagedAgentRuntimeCatalog]
@@ -379,5 +398,8 @@ export const useGuidAssistantSelection = ({
     currentContextWindowOption,
     selectedContextWindowValue,
     setSelectedContextWindowValue,
+    allowAllOption,
+    allowAll,
+    setAllowAll,
   };
 };

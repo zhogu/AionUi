@@ -1,4 +1,8 @@
 {
+  "allowAllLabel": "Tümüne izin ver",
+  "allowAllEnabled": "Açık",
+  "allowAllDisabled": "Kapalı",
+  "allowAllDescription": "Bu oturumdaki araç, yol ve URL isteklerini otomatik onaylar. Yalnızca güvenilir işler için etkinleştirin.",
   "plan": "Plan Mode",
   "default": "Default",
   "acceptEdits": "Accept Edits",

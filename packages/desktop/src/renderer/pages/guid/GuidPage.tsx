@@ -265,6 +265,14 @@ const GuidPage: React.FC = () => {
     thoughtLevelOptionId: agentSelection.currentThoughtLevelOption?.id,
     selectedContextWindowValue: agentSelection.selectedContextWindowValue,
     contextWindowOptionId: agentSelection.currentContextWindowOption?.id,
+    initialAllowAll: agentSelection.allowAllOption
+      ? {
+          id: agentSelection.allowAllOption.id,
+          value: agentSelection.allowAll
+            ? agentSelection.allowAllOption.enabledValue
+            : agentSelection.allowAllOption.disabledValue,
+        }
+      : undefined,
     current_model: modelSelection.current_model,
 
     guidDisabledBuiltinSkills,
@@ -638,6 +646,9 @@ const GuidPage: React.FC = () => {
       selectedMode={agentSelection.selectedMode}
       dynamicModes={agentSelection.currentAgentModeOptions}
       onModeSelect={setGuidSelectedMode}
+      showAllowAll={Boolean(agentSelection.allowAllOption)}
+      allowAll={agentSelection.allowAll}
+      onAllowAllChange={agentSelection.setAllowAll}
       allSkills={allSkills}
       disabledBuiltinSkills={guidDisabledBuiltinSkills ?? []}
       enabledSkills={guidEnabledSkills ?? []}

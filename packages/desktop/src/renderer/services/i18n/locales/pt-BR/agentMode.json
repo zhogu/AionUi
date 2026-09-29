@@ -1,4 +1,8 @@
 {
+  "allowAllLabel": "Permitir tudo",
+  "allowAllEnabled": "Ativado",
+  "allowAllDisabled": "Desativado",
+  "allowAllDescription": "Aprovar automaticamente solicitações de ferramentas, caminhos e URLs nesta sessão. Ative apenas para tarefas confiáveis.",
   "plan": "Modo de Planejamento",
   "default": "Padrão",
   "acceptEdits": "Aceitar Edições",

@@ -1,4 +1,8 @@
 {
+  "allowAllLabel": "اجازه به همه",
+  "allowAllEnabled": "روشن",
+  "allowAllDisabled": "خاموش",
+  "allowAllDescription": "درخواست‌های ابزار، مسیر و URL در این نشست به‌طور خودکار تأیید می‌شوند. فقط برای کارهای قابل‌اعتماد فعال کنید.",
   "plan": "حالت برنامه‌ریزی",
   "default": "پیش‌فرض",
   "acceptEdits": "تأیید ویرایش‌ها",

@@ -473,6 +473,24 @@ Access from other devices: `http://YOUR_IP_ADDRESS:3000`
 
 ## Troubleshooting
 
+### Initial Copilot permissions
+
+When creating a Copilot conversation, **Allow all** appears next to the mode
+selector (on mobile, in the **+** action sheet). It is independent of agent/plan/
+autopilot mode and defaults to **Off**, even if an earlier session used it.
+Enabling it automatically approves tool, path and URL requests for the new
+session; use it only for trusted work. Switching assistants or opening a new
+creation page resets this choice; changing models does not.
+
+The control is available when the agent's cached capabilities advertise the
+`allow_all` selector: native Copilot uses `on`/`off`, while the optional Copilot
+adapter uses `true`/`false`. If absent, test the saved agent connection in Settings
+to refresh its capabilities. Unsupported agents do not show this control.
+Creation initializes the runtime and confirms the selected permission value
+before sending the first prompt, including when creating an empty conversation.
+If initialization or confirmation fails, an error is shown and the first prompt
+is not sent. Existing conversations and global CLI defaults are not modified.
+
 ### Viewing a Copilot CLI session ID
 
 In the conversation list, open **… → CLI session ID** to display and copy the

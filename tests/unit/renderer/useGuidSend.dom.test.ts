@@ -93,6 +93,70 @@ describe('useGuidSend', () => {
     sessionStorage.clear();
   });
 
+  it.each(['on', 'off', 'true', 'false'])('confirms allow_all=%s before the first prompt', async (value) => {
+    const deps = { ...createDeps(), selectedAssistantBackend: 'copilot', initialAllowAll: { id: 'allow_all', value } };
+    let confirm!: (result: unknown) => void;
+    setConfigOptionMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          confirm = resolve;
+        })
+    );
+    const { result } = renderHook(() => useGuidSend(deps));
+    const sending = result.current.handleSend();
+    await vi.waitFor(() =>
+      expect(setConfigOptionMock).toHaveBeenCalledWith({
+        conversation_id: 'conv-1',
+        option_id: 'allow_all',
+        value,
+      })
+    );
+    expect(sessionStorage.getItem('acp_initial_message_conv-1')).toBeNull();
+    expect(deps.navigate).not.toHaveBeenCalled();
+    await act(async () => {
+      confirm({ confirmation: 'observed', config_options: [{ id: 'allow_all', current_value: value }] });
+      await sending;
+    });
+    expect(ensureRuntimeMock).toHaveBeenCalledWith('conv-1');
+    expect(deps.navigate).toHaveBeenCalledWith('/conversation/conv-1');
+    expect(JSON.parse(sessionStorage.getItem('acp_initial_message_conv-1')!)).toMatchObject({ input: 'hello' });
+  });
+
+  it('applies allow-all when creating an empty session without sending a prompt', async () => {
+    const deps = { ...createDeps(), input: '', initialAllowAll: { id: 'allow_all', value: 'on' } };
+    setConfigOptionMock.mockResolvedValue({
+      confirmation: 'observed',
+      config_options: [{ id: 'allow_all', current_value: 'on' }],
+    });
+    const { result } = renderHook(() => useGuidSend(deps));
+    await act(() => result.current.handleSend());
+    expect(setConfigOptionMock).toHaveBeenCalledOnce();
+    expect(sessionStorage.getItem('acp_initial_message_conv-1')).toBeNull();
+    expect(deps.navigate).toHaveBeenCalledWith('/conversation/conv-1');
+  });
+
+  it.each([
+    { confirmation: 'command_ack' },
+    { confirmation: 'observed', config_options: [{ id: 'allow_all', current_value: 'off' }] },
+  ])('does not send after an unconfirmed permission change: %j', async (response) => {
+    const deps = { ...createDeps(), initialAllowAll: { id: 'allow_all', value: 'on' } };
+    setConfigOptionMock.mockResolvedValue(response);
+    const { result } = renderHook(() => useGuidSend(deps));
+    await expect(result.current.handleSend()).rejects.toThrow('config_not_observed');
+    expect(sessionStorage.getItem('acp_initial_message_conv-1')).toBeNull();
+    expect(deps.navigate).not.toHaveBeenCalled();
+  });
+
+  it('does not send after runtime initialization fails', async () => {
+    const deps = { ...createDeps(), initialAllowAll: { id: 'allow_all', value: 'on' } };
+    ensureRuntimeMock.mockRejectedValue(new Error('agent unavailable'));
+    const { result } = renderHook(() => useGuidSend(deps));
+    await expect(result.current.handleSend()).rejects.toThrow('agent unavailable');
+    expect(setConfigOptionMock).not.toHaveBeenCalled();
+    expect(deps.navigate).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('acp_initial_message_conv-1')).toBeNull();
+  });
+
   it('applies the homepage context before handing off the first prompt', async () => {
     const deps = {
       ...createDeps(),

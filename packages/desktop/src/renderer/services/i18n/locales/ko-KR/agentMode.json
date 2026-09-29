@@ -1,4 +1,8 @@
 {
+  "allowAllLabel": "모두 허용",
+  "allowAllEnabled": "켜기",
+  "allowAllDisabled": "끄기",
+  "allowAllDescription": "이 세션의 도구, 경로 및 URL 접근 요청을 자동 승인합니다. 신뢰할 수 있는 작업에만 사용하세요.",
   "plan": "계획 모드",
   "default": "기본값",
   "acceptEdits": "편집을 자동 수락",

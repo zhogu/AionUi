@@ -130,13 +130,20 @@ vi.mock('@arco-design/web-react', () => {
       children,
       checked,
       onChange,
+      disabled,
     }: {
       children?: React.ReactNode;
       checked?: boolean;
-      onChange?: () => void;
+      onChange?: (checked: boolean) => void;
+      disabled?: boolean;
     }) => (
       <label>
-        <input type='checkbox' checked={checked ?? false} onChange={() => onChange?.()} />
+        <input
+          type='checkbox'
+          disabled={disabled}
+          checked={checked ?? false}
+          onChange={(event) => onChange?.(event.target.checked)}
+        />
         {children}
       </label>
     ),
@@ -192,6 +199,43 @@ describe('GuidActionRow skill/MCP submenu search', () => {
     vi.clearAllMocks();
     environment.isMobile = false;
     environment.isDesktop = true;
+  });
+
+  it('shows an independent allow-all checkbox beside the desktop mode selector', () => {
+    const onAllowAllChange = vi.fn();
+    const onModeSelect = vi.fn();
+    renderActionRow({
+      showAllowAll: true,
+      allowAll: false,
+      onAllowAllChange,
+      onModeSelect,
+      dynamicModes: [{ value: 'agent', label: 'Agent' }],
+    });
+    expect(screen.getByTestId('agent-mode-selector')).toBeInTheDocument();
+    const checkbox = screen.getByRole('checkbox', { name: 'agentMode.allowAllLabel' });
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
+    expect(onAllowAllChange).toHaveBeenCalledWith(true);
+    expect(onModeSelect).not.toHaveBeenCalled();
+  });
+
+  it('offers allow-all on/off independently in the mobile sheet', () => {
+    environment.isMobile = true;
+    const onAllowAllChange = vi.fn();
+    renderActionRow({ showAllowAll: true, allowAll: false, onAllowAllChange });
+    expect(screen.getByTestId('allow-all')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('agentMode.allowAllEnabled'));
+    expect(onAllowAllChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByText('agentMode.allowAllDisabled'));
+    expect(onAllowAllChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('hides unsupported allow-all and disables the desktop choice during creation', () => {
+    const { unmount } = renderActionRow();
+    expect(screen.queryByText('agentMode.allowAllLabel')).not.toBeInTheDocument();
+    unmount();
+    renderActionRow({ showAllowAll: true, loading: true, onAllowAllChange: vi.fn() });
+    expect(screen.getByRole('checkbox', { name: 'agentMode.allowAllLabel' })).toBeDisabled();
   });
 
   it('offers and selects context independently from reasoning in the mobile homepage sheet', () => {

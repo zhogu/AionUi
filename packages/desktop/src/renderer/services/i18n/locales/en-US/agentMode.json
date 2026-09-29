@@ -1,4 +1,8 @@
 {
+  "allowAllLabel": "Allow all",
+  "allowAllEnabled": "On",
+  "allowAllDisabled": "Off",
+  "allowAllDescription": "Automatically approve tool, path and URL requests in this session. Enable only for trusted work.",
   "plan": "Plan Mode",
   "default": "Default",
   "acceptEdits": "Accept Edits",

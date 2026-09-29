@@ -1,4 +1,8 @@
 {
+  "allowAllLabel": "Tout autoriser",
+  "allowAllEnabled": "Activé",
+  "allowAllDisabled": "Désactivé",
+  "allowAllDescription": "Approuver automatiquement les demandes d’outils, de chemins et d’URL de cette session. À activer uniquement pour des tâches fiables.",
   "plan": "Mode Plan",
   "default": "Par défaut",
   "acceptEdits": "Accepter les modifications",
