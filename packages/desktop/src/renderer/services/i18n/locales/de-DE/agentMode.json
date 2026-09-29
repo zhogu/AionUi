@@ -1,4 +1,8 @@
 {
+  "allowAllLabel": "Alles erlauben",
+  "allowAllEnabled": "Ein",
+  "allowAllDisabled": "Aus",
+  "allowAllDescription": "Werkzeug-, Pfad- und URL-Anfragen in dieser Sitzung automatisch genehmigen. Nur für vertrauenswürdige Aufgaben aktivieren.",
   "plan": "Plan-Modus",
   "default": "Standard",
   "acceptEdits": "Bearbeitungen akzeptieren",

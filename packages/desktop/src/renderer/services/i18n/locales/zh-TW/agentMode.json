@@ -1,4 +1,8 @@
 {
+  "allowAllLabel": "允許全部",
+  "allowAllEnabled": "開啟",
+  "allowAllDisabled": "關閉",
+  "allowAllDescription": "自動核准此工作階段的工具、路徑和 URL 存取請求。僅對可信任的任務開啟。",
   "plan": "計畫模式",
   "default": "預設",
   "acceptEdits": "自動接受編輯",

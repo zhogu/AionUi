@@ -73,6 +73,68 @@ describe('useGuidAssistantSelection', () => {
     ];
   });
 
+  it.each([
+    ['copilot', 'on', 'off'],
+    ['custom', 'true', 'false'],
+  ])('keeps %s allow-all opt-in and scoped to the creation page', async (backend, enabledValue, disabledValue) => {
+    mockAssistants[0] = {
+      ...mockAssistants[0],
+      agent:
+        backend === 'custom'
+          ? { type: 'acp', source: 'custom' }
+          : { type: 'acp', source: 'builtin', acp_backend: backend },
+    };
+    mockManagedAgents = [
+      {
+        id: 'agent-claude',
+        config_options: [
+          {
+            id: 'allow_all',
+            type: 'select',
+            current_value: enabledValue,
+            options: [{ value: enabledValue }, { value: disabledValue }],
+          },
+        ],
+      } as ManagedAgent,
+    ];
+    const { result, rerender } = renderHook(({ locationKey }) => useGuidAssistantSelection({ locationKey }), {
+      initialProps: { locationKey: 'first' },
+    });
+    await waitFor(() =>
+      expect(result.current.allowAllOption).toEqual({ id: 'allow_all', enabledValue, disabledValue })
+    );
+    expect(result.current.allowAll).toBe(false);
+    act(() => result.current.setAllowAll(true));
+    expect(result.current.allowAll).toBe(true);
+    act(() => result.current.setSelectedAcpModel('another-model'));
+    expect(result.current.allowAll).toBe(true);
+    rerender({ locationKey: 'second' });
+    expect(result.current.allowAll).toBe(false);
+    expect(configSetMock).not.toHaveBeenCalledWith(expect.stringContaining('permission'), expect.anything());
+  });
+
+  it('does not expose unknown permission values or non-Copilot builtin agents', async () => {
+    mockManagedAgents = [
+      {
+        id: 'agent-claude',
+        config_options: [{ id: 'allow_all', type: 'select', options: [{ value: 'on' }, { value: 'off' }] }],
+      } as ManagedAgent,
+    ];
+    const { result, rerender } = renderHook(() => useGuidAssistantSelection({}));
+    await waitFor(() => expect(result.current.selectedAssistantId).toBe('assistant-claude'));
+    expect(result.current.allowAllOption).toBeNull();
+    mockAssistants[0] = { ...mockAssistants[0], agent: { type: 'acp', source: 'builtin', acp_backend: 'copilot' } };
+    mockAssistants = [...mockAssistants];
+    mockManagedAgents = [
+      {
+        id: 'agent-claude',
+        config_options: [{ id: 'allow_all', type: 'select', options: [{ value: 'maybe' }, { value: 'never' }] }],
+      } as ManagedAgent,
+    ];
+    rerender();
+    expect(result.current.allowAllOption).toBeNull();
+  });
+
   it('derives homepage tiers and reasoning from the selected model, not the cached Auto session', async () => {
     const options = configOptions({ model: { modelId: 'auto' }, mode: 'interactive', permission: 'manual' }, [
       { id: 'auto' },

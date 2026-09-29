@@ -1,4 +1,8 @@
 {
+  "allowAllLabel": "すべて許可",
+  "allowAllEnabled": "オン",
+  "allowAllDisabled": "オフ",
+  "allowAllDescription": "このセッションのツール、パス、URL へのアクセス要求を自動承認します。信頼できる作業でのみ有効にしてください。",
   "plan": "プランモード",
   "default": "デフォルト",
   "acceptEdits": "編集を自動承認",

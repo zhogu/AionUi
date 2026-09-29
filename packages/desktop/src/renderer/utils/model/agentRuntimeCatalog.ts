@@ -269,3 +269,23 @@ export function buildAgentRuntimeSlashCommands(agent: AgentRuntimeCatalog | null
 
   return mapAgentAvailableCommandsToSlashCommands(agent.available_commands ?? agent.handshake?.available_commands);
 }
+
+export function buildAgentRuntimeAllowAllOption(
+  agent: AgentRuntimeCatalog | null | undefined
+): { id: string; enabledValue: string; disabledValue: string } | null {
+  const option = normalizeConfigOptions(agent?.config_options).find(
+    (item) => item.id === 'allow_all' && item.type === 'select'
+  );
+  if (!option) return null;
+  const values = new Set(option.options?.map((choice) => choice.value));
+  // Native Copilot advertises on/off; our SDK adapter advertises true/false.
+  for (const [enabledValue, disabledValue] of [
+    ['on', 'off'],
+    ['true', 'false'],
+  ]) {
+    if (values.size === 2 && values.has(enabledValue) && values.has(disabledValue)) {
+      return { id: option.id, enabledValue, disabledValue };
+    }
+  }
+  return null;
+}

@@ -102,6 +102,9 @@ type GuidActionRowProps = {
   selectedMode: string;
   dynamicModes?: AgentModeOption[];
   onModeSelect: (mode: string) => void;
+  showAllowAll?: boolean;
+  allowAll?: boolean;
+  onAllowAllChange?: (enabled: boolean) => void;
 
   // Skills management
   allSkills: Array<{ name: string; description: string; isAuto: boolean }>;
@@ -139,6 +142,9 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
   selectedMode,
   dynamicModes = [],
   onModeSelect,
+  showAllowAll = false,
+  allowAll = false,
+  onAllowAllChange,
   allSkills,
   disabledBuiltinSkills,
   enabledSkills,
@@ -168,7 +174,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
     }
   }, []);
   const showModeSwitch = dynamicModes.length > 0;
-  const configOptionCount = (modelSelectorNode ? 1 : 0) + (showModeSwitch ? 1 : 0);
+  const configOptionCount = (modelSelectorNode ? 1 : 0) + (showModeSwitch ? 1 : 0) + (showAllowAll ? 1 : 0);
 
   // Browser file picker ref (WebUI only)
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -335,6 +341,28 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
       });
     }
 
+    if (showAllowAll && onAllowAllChange) {
+      entries.push({
+        key: 'allow-all',
+        icon: <Shield theme='outline' size='16' />,
+        label: t('agentMode.allowAllLabel'),
+        meta: t(allowAll ? 'agentMode.allowAllEnabled' : 'agentMode.allowAllDisabled'),
+        submenu: {
+          title: t('agentMode.allowAllLabel'),
+          options: [
+            { key: 'off', label: t('agentMode.allowAllDisabled'), active: !allowAll },
+            {
+              key: 'on',
+              label: t('agentMode.allowAllEnabled'),
+              description: t('agentMode.allowAllDescription'),
+              active: allowAll,
+            },
+          ],
+          onSelect: (key) => onAllowAllChange(key === 'on'),
+        },
+      });
+    }
+
     // Match the conversation send box: WebUI offers both the backend-machine
     // picker and an upload from the phone/current browser device.
     if (isWebUI) {
@@ -436,6 +464,9 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
     dynamicModes,
     selectedMode,
     onModeSelect,
+    showAllowAll,
+    allowAll,
+    onAllowAllChange,
     allSkills,
     disabledBuiltinSkills,
     enabledSkills,
@@ -666,6 +697,18 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
                 compactLeadingIcon={<Shield theme='outline' size='14' fill={iconColors.secondary} />}
                 modeLabelFormatter={getModeDisplayLabel}
               />
+            )}
+            {showAllowAll && onAllowAllChange && (
+              <Tooltip content={t('agentMode.allowAllDescription')}>
+                <Checkbox
+                  data-testid='guid-allow-all'
+                  checked={allowAll}
+                  disabled={loading}
+                  onChange={onAllowAllChange}
+                >
+                  {t('agentMode.allowAllLabel')}
+                </Checkbox>
+              </Tooltip>
             )}
           </div>
         )}
