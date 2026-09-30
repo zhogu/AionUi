@@ -1,4 +1,8 @@
 {
+  "startupStarting": "Agent wird gestartet (bis zu 90 Sekunden)…",
+  "startupConfiguring": "{{option}} wird bestätigt (bis zu 45 Sekunden)…",
+  "startupFailed": "Einrichtung fehlgeschlagen; Nachricht nicht gesendet, Eingabe behalten. Mit Senden die Einrichtung im selben Chat wiederholen oder den Chat zur Prüfung öffnen. Ein abgelaufener Vorgang kann auf dem Server noch abgeschlossen werden; Berechtigungen vor manuellem Senden prüfen.",
+  "startupOpenConversation": "Erstellten Chat öffnen",
   "agentFallbackNotice": "{{original}} ist nicht verfügbar, stattdessen wird {{fallback}} verwendet.",
   "noAgentAvailable": "Kein Hauptagent verfügbar. Bitte bei Google anmelden oder Claude/Codex CLI installieren. Zu den Einstellungen?",
   "noAgentAvailableShort": "Kein Hauptagent verfügbar. Zum Konfigurieren klicken.",

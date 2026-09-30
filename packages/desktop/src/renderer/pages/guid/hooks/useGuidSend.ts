@@ -11,7 +11,8 @@ import { toSessionMcpServer } from '@/renderer/hooks/mcp/catalog';
 import { emitter } from '@/renderer/utils/emitter';
 import { updateWorkspaceTime } from '@/renderer/utils/workspace/workspaceHistory';
 import { Message } from '@arco-design/web-react';
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { setSendBoxDraft } from '@/renderer/hooks/chat/useSendBoxDraft';
 import { type TFunction } from 'i18next';
 import type { NavigateFunction } from 'react-router-dom';
 import { mutate as swrMutate } from 'swr';
@@ -67,6 +68,8 @@ export type GuidSendResult = {
   handleSend: () => Promise<void>;
   sendMessageHandler: () => void;
   isButtonDisabled: boolean;
+  startup: { phase: 'starting' | 'configuring'; option?: string; conversationId: string; error?: string } | null;
+  openCreatedConversation: () => void;
 };
 
 /**
@@ -108,11 +111,25 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     localeKey,
   } = deps;
   const sendingRef = useRef(false);
+  const pendingCreation = useRef<{ key: string; id: string } | null>(null);
+  const attemptRef = useRef(0);
+  const [startup, setStartup] = useState<GuidSendResult['startup']>(null);
+  useEffect(
+    () => () => {
+      attemptRef.current++;
+    },
+    []
+  );
 
   const handleSend = useCallback(async () => {
     if (!selectedAssistantId) {
       return;
     }
+    const attempt = ++attemptRef.current;
+    const assertCurrentAttempt = () => {
+      if (attempt !== attemptRef.current) throw new Error('Conversation creation was left before setup completed');
+    };
+    setStartup(null);
 
     const isCustomWorkspace = !!dir;
     const finalWorkspace = dir || '';
@@ -241,7 +258,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     }
 
     try {
-      const conversation = await ipcBridge.conversation.create.invoke({
+      const createParams = {
         name: input,
         assistant: {
           id: assistantConversationId,
@@ -256,11 +273,18 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
           selected_session_mcp_servers:
             selectedMcpServerIds !== undefined ? selectedSessionMcpServers : selectedSessionMcpServersToSend,
         },
-      });
+      };
+      const creationKey = JSON.stringify(createParams);
+      const conversation =
+        pendingCreation.current?.key === creationKey
+          ? { id: pendingCreation.current.id }
+          : await ipcBridge.conversation.create.invoke(createParams);
+      assertCurrentAttempt();
       if (!conversation || !conversation.id) {
-        console.error('Failed to create ACP conversation - conversation object is null or missing id');
-        return;
+        throw new Error('Failed to create ACP conversation: missing conversation ID');
       }
+      pendingCreation.current = { key: creationKey, id: conversation.id };
+      emitter.emit('chat.history.refresh');
 
       const initialConfig = [
         { id: thoughtLevelOptionId, value: selectedThoughtLevelValue },
@@ -269,13 +293,17 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
       ].filter((option): option is { id: string; value: string } => Boolean(option.id && option.value));
       if (initialConfig.length > 0) {
         // Confirm every requested setting before handing off the first prompt.
+        setStartup({ phase: 'starting', conversationId: conversation.id });
         await ensureConversationRuntime(conversation.id);
+        assertCurrentAttempt();
         for (const option of initialConfig) {
+          setStartup({ phase: 'configuring', option: option.id, conversationId: conversation.id });
           const response = await ipcBridge.acpConversation.setConfigOption.invoke({
             conversation_id: conversation.id,
             option_id: option.id,
             value: option.value,
           });
+          assertCurrentAttempt();
           if (!hasObservedValue(response, option.id, option.value)) {
             throw new Error(`${option.id}: config_not_observed`);
           }
@@ -287,10 +315,11 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
       }
 
       if (assistantConversationId) {
-        await Promise.all([
+        // Cache refresh must not hold navigation hostage after setup has succeeded.
+        void Promise.all([
           swrMutate(`guid.assistant.detail.${assistantConversationId}.${localeKey}`),
           swrMutate('assistants.list'),
-        ]);
+        ]).catch((error) => console.error('[Guid] Assistant cache refresh failed:', error));
       }
 
       emitter.emit('chat.history.refresh');
@@ -307,8 +336,20 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
       }
 
       await navigate(`/conversation/${conversation.id}`);
+      pendingCreation.current = null;
+      setStartup(null);
     } catch (error: unknown) {
       console.error('Failed to create ACP conversation:', error);
+      if (attempt === attemptRef.current) {
+        setStartup((current) =>
+          current
+            ? {
+                ...current,
+                error: getConversationCreateErrorMessage(error, t),
+              }
+            : current
+        );
+      }
       throw error;
     }
   }, [
@@ -336,6 +377,19 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     t,
     localeKey,
   ]);
+
+  const openCreatedConversation = useCallback(() => {
+    if (!startup?.error) return;
+    attemptRef.current++;
+    // Do not stash an automatic first message: permissions have not been confirmed.
+    setSendBoxDraft('acp', startup.conversationId, {
+      _type: 'acp',
+      content: input,
+      atPath: [],
+      uploadFile: files.map(chatFileRefPath),
+    });
+    void navigate(`/conversation/${startup.conversationId}`);
+  }, [files, input, navigate, startup]);
 
   const sendMessageHandler = useCallback(() => {
     if (loading || sendingRef.current) return;
@@ -383,5 +437,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     handleSend,
     sendMessageHandler,
     isButtonDisabled,
+    startup,
+    openCreatedConversation,
   };
 };

@@ -1,4 +1,8 @@
 {
+  "startupStarting": "Aracı başlatılıyor (en fazla 90 saniye)…",
+  "startupConfiguring": "{{option}} doğrulanıyor (en fazla 45 saniye)…",
+  "startupFailed": "Kurulum başarısız; mesaj gönderilmedi ve giriş korundu. Aynı konuşmada tekrar denemek için Gönder'e basın veya aracıyı incelemek için konuşmayı açın. Zaman aşımına uğrayan işlem sunucuda tamamlanabilir; elle göndermeden önce izinleri kontrol edin.",
+  "startupOpenConversation": "Oluşturulan konuşmayı aç",
   "promptExamplesHint": "Bu talimatları deneyin",
   "defaultPrompts": {
     "understand": "Bu projeyi incele ve ne yaptığını, nereden başlamam gerektiğini basit bir dille anlat",

@@ -87,6 +87,59 @@ describe('httpBridge', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('aborts a stalled runtime request at its deadline and ignores late success', async () => {
+    vi.useFakeTimers();
+    let resolve!: (response: Response) => void;
+    const fetchMock = vi.fn(
+      (_url: string, _init: RequestInit) =>
+        new Promise<Response>((done) => {
+          resolve = done;
+        })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const result = httpPost('/api/conversations/c/runtime/ensure', () => undefined, { timeoutMs: 90_000 }).invoke();
+    const rejected = expect(result).rejects.toMatchObject({ code: 'REQUEST_TIMEOUT', status: 408 });
+    await vi.advanceTimersByTimeAsync(89_999);
+    const signal = fetchMock.mock.calls[0][1].signal;
+    await vi.advanceTimersByTimeAsync(1);
+    await rejected;
+    expect(signal?.aborted).toBe(true);
+    resolve(
+      new Response(JSON.stringify({ data: { ready: true } }), { headers: { 'Content-Type': 'application/json' } })
+    );
+    await expect(result).rejects.toMatchObject({ code: 'REQUEST_TIMEOUT' });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('times out a config response whose JSON body never completes', async () => {
+    vi.useFakeTimers();
+    const response = new Response('', { headers: { 'Content-Type': 'application/json' } });
+    vi.spyOn(response, 'json').mockImplementation(() => new Promise(() => {}));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+    const result = httpPut('/api/conversations/c/config-options/allow_all', undefined, undefined, {
+      timeoutMs: 45_000,
+    }).invoke();
+    const rejected = expect(result).rejects.toMatchObject({ code: 'REQUEST_TIMEOUT' });
+    await vi.advanceTimersByTimeAsync(45_000);
+    await rejected;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clears the deadline after successful responses without changing default request behavior', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ data: 'ready' }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    );
+    await expect(httpRequest('POST', '/api/test', {}, { timeoutMs: 50 })).resolves.toBe('ready');
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   describe('getBaseUrl', () => {

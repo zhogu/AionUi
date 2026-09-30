@@ -1,4 +1,8 @@
 {
+  "startupStarting": "正在啟動 agent（最多等待 90 秒）…",
+  "startupConfiguring": "正在確認 {{option}}（最多等待 45 秒）…",
+  "startupFailed": "初始化失敗，訊息尚未傳送，輸入已保留。按傳送可在同一對話重試，也可開啟對話檢查 agent。逾時操作仍可能在伺服器完成，手動傳送前請確認權限狀態。",
+  "startupOpenConversation": "開啟已建立的對話",
   "promptExamplesHint": "試試這些指令",
   "defaultPrompts": {
     "understand": "了解一下這個專案，用白話告訴我它是做什麼的、從哪裡入手",

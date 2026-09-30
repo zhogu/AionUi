@@ -38,7 +38,36 @@ describe('httpRequest 401 → refresh → replay (WebUI #4124 fix)', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     delete (window as WindowWithPort).__backendPort;
+  });
+
+  it('does not replay a state-changing request after its deadline expires during auth refresh', async () => {
+    vi.useFakeTimers();
+    let finishRefresh!: (response: unknown) => void;
+    const fetchMock = vi.fn((url: string) =>
+      url === '/api/auth/refresh'
+        ? new Promise((resolve) => {
+            finishRefresh = resolve;
+          })
+        : Promise.resolve(errorResponse(401, { code: 'UNAUTHORIZED' }))
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const request = httpRequest(
+      'PUT',
+      '/api/conversations/c/config-options/allow_all',
+      { value: 'on' },
+      { timeoutMs: 45_000 }
+    );
+    const rejected = expect(request).rejects.toMatchObject({ code: 'REQUEST_TIMEOUT' });
+    await vi.advanceTimersByTimeAsync(45_000);
+    await rejected;
+    finishRefresh({ ok: true });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      '/api/conversations/c/config-options/allow_all',
+      '/api/auth/refresh',
+    ]);
   });
 
   it('refreshes once and replays the original request on 401, returning unwrapped data', async () => {

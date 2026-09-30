@@ -151,6 +151,8 @@ export function isBackendHttpError(error: unknown): error is BackendHttpError {
  * the caller's existing try/catch keeps working.
  */
 export type HttpRequestOptions = {
+  /** Bounds the complete request, including auth refresh and response-body reads. */
+  timeoutMs?: number;
   silentStatuses?: number[];
   /** Extra request headers merged on top of the default `Content-Type`. */
   headers?: Record<string, string>;
@@ -207,13 +209,16 @@ function sendHttpRequest(
   method: string,
   path: string,
   headers: Record<string, string>,
-  body?: unknown
+  body?: unknown,
+  signal?: AbortSignal
 ): Promise<Response> {
+  signal?.throwIfAborted();
   const url = `${getBaseUrl()}${path}`;
   return fetch(url, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    ...(signal ? { signal } : {}),
   });
 }
 
@@ -222,6 +227,36 @@ export async function httpRequest<T>(
   path: string,
   body?: unknown,
   options?: HttpRequestOptions
+): Promise<T> {
+  if (!options?.timeoutMs) return performHttpRequest<T>(method, path, body, options);
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const error = new BackendHttpError({
+        method,
+        path,
+        status: 408,
+        body: { code: 'REQUEST_TIMEOUT', error: `Request timed out: ${method} ${path}` },
+      });
+      console.error('[httpBridge] Request deadline exceeded', { method, path, timeoutMs: options.timeoutMs });
+      controller.abort(error);
+      reject(error);
+    }, options.timeoutMs);
+  });
+  try {
+    return await Promise.race([performHttpRequest<T>(method, path, body, options, controller.signal), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function performHttpRequest<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  options?: HttpRequestOptions,
+  signal?: AbortSignal
 ): Promise<T> {
   const headers: Record<string, string> = {};
 
@@ -238,7 +273,7 @@ export async function httpRequest<T>(
     body !== undefined ? JSON.stringify(redactForLog(body)).slice(0, 500) : '(no body)'
   );
 
-  let response = await sendHttpRequest(method, path, headers, body);
+  let response = await sendHttpRequest(method, path, headers, body, signal);
 
   // Expired access cookie → 401. Attempt one silent session refresh, then replay
   // the original request — the WebUI half of the #4124 fix. refreshSession() is a
@@ -249,7 +284,7 @@ export async function httpRequest<T>(
     const refreshed = await refreshSession();
     if (refreshed) {
       console.debug(`[httpBridge] session refreshed, replaying ${method} ${path}`);
-      response = await sendHttpRequest(method, path, headers, body);
+      response = await sendHttpRequest(method, path, headers, body, signal);
     }
   }
 
@@ -322,14 +357,15 @@ export function httpGet<Data, Params = undefined>(
 
 export function httpPost<Data, Params = undefined>(
   path: string | ((params: Params) => string),
-  mapBody?: (params: Params) => unknown
+  mapBody?: (params: Params) => unknown,
+  options?: HttpRequestOptions
 ): ProviderLike<Data, Params> {
   return {
     provider: () => {},
     invoke: (async (params?: Params) => {
       const resolvedPath = typeof path === 'function' ? path(params!) : path;
       const body = mapBody ? mapBody(params!) : params;
-      return httpRequest<Data>('POST', resolvedPath, body);
+      return httpRequest<Data>('POST', resolvedPath, body, options);
     }) as ProviderLike<Data, Params>['invoke'],
   };
 }
@@ -337,7 +373,8 @@ export function httpPost<Data, Params = undefined>(
 export function httpPut<Data, Params = undefined>(
   path: string | ((params: Params) => string),
   mapBody?: (params: Params) => unknown,
-  mapHeaders?: (params: Params) => Record<string, string> | undefined
+  mapHeaders?: (params: Params) => Record<string, string> | undefined,
+  options?: HttpRequestOptions
 ): ProviderLike<Data, Params> {
   return {
     provider: () => {},
@@ -345,7 +382,7 @@ export function httpPut<Data, Params = undefined>(
       const resolvedPath = typeof path === 'function' ? path(params!) : path;
       const body = mapBody ? mapBody(params!) : params;
       const headers = mapHeaders ? mapHeaders(params!) : undefined;
-      return httpRequest<Data>('PUT', resolvedPath, body, headers ? { headers } : undefined);
+      return httpRequest<Data>('PUT', resolvedPath, body, { ...options, ...(headers ? { headers } : {}) });
     }) as ProviderLike<Data, Params>['invoke'],
   };
 }

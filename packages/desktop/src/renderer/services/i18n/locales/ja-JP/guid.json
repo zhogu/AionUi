@@ -1,4 +1,8 @@
 {
+  "startupStarting": "エージェントを起動中（最大90秒）…",
+  "startupConfiguring": "{{option}} を確認中（最大45秒）…",
+  "startupFailed": "初期化に失敗しました。メッセージは未送信で、入力は保持されています。送信で同じ会話の設定を再試行するか、会話を開いて確認してください。タイムアウトした処理がサーバーで完了する場合があるため、手動送信前に権限を確認してください。",
+  "startupOpenConversation": "作成済みの会話を開く",
   "promptExamplesHint": "これらの指示を試す",
   "defaultPrompts": {
     "understand": "このプロジェクトを調べて、何をするものか、どこから手を付ければいいかを分かりやすく教えて",

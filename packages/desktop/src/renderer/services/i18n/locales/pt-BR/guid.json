@@ -1,4 +1,8 @@
 {
+  "startupStarting": "Iniciando agente (até 90 segundos)…",
+  "startupConfiguring": "Confirmando {{option}} (até 45 segundos)…",
+  "startupFailed": "Falha na configuração; a mensagem não foi enviada e o texto foi preservado. Clique em Enviar para tentar novamente na mesma conversa ou abra-a para inspecionar o agente. Uma operação expirada ainda pode terminar no servidor; verifique as permissões antes de enviar manualmente.",
+  "startupOpenConversation": "Abrir conversa criada",
   "promptExamplesHint": "Experimente estas instruções",
   "defaultPrompts": {
     "understand": "Conheça este projeto e explique em palavras simples o que ele faz e por onde começar",

@@ -93,6 +93,96 @@ describe('useGuidSend', () => {
     sessionStorage.clear();
   });
 
+  it('shows the blocked stage, keeps input and retries setup in the same conversation', async () => {
+    const deps = { ...createDeps(), initialAllowAll: { id: 'allow_all', value: 'on' } };
+    ensureRuntimeMock.mockRejectedValueOnce(new Error('runtime request timed out'));
+    const { result } = renderHook(() => useGuidSend(deps));
+    await act(async () => {
+      await expect(result.current.handleSend()).rejects.toThrow('timed out');
+    });
+    expect(result.current.startup).toMatchObject({
+      phase: 'starting',
+      conversationId: 'conv-1',
+      error: 'runtime request timed out',
+    });
+    expect(deps.setInput).not.toHaveBeenCalled();
+    expect(deps.navigate).not.toHaveBeenCalled();
+    setConfigOptionMock.mockResolvedValue({
+      confirmation: 'observed',
+      config_options: [{ id: 'allow_all', current_value: 'on' }],
+    });
+    await act(() => result.current.handleSend());
+    expect(createConversationInvokeMock).toHaveBeenCalledOnce();
+    expect(ensureRuntimeMock).toHaveBeenCalledTimes(2);
+    expect(deps.navigate).toHaveBeenCalledWith('/conversation/conv-1');
+    expect(result.current.startup).toBeNull();
+  });
+
+  it('opens a failed setup for inspection without auto-sending the retained prompt', async () => {
+    const deps = { ...createDeps(), initialAllowAll: { id: 'allow_all', value: 'on' } };
+    setConfigOptionMock.mockRejectedValueOnce(new Error('config request timed out'));
+    const { result } = renderHook(() => useGuidSend(deps));
+    await act(async () => {
+      await expect(result.current.handleSend()).rejects.toThrow('timed out');
+    });
+    expect(result.current.startup).toMatchObject({
+      phase: 'configuring',
+      option: 'allow_all',
+      error: 'config request timed out',
+    });
+    act(() => result.current.openCreatedConversation());
+    expect(deps.navigate).toHaveBeenCalledWith('/conversation/conv-1');
+    expect(sessionStorage.getItem('acp_initial_message_conv-1')).toBeNull();
+  });
+
+  it('does not send or navigate if the user leaves during runtime startup', async () => {
+    const deps = { ...createDeps(), initialAllowAll: { id: 'allow_all', value: 'on' } };
+    let ready!: () => void;
+    ensureRuntimeMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          ready = resolve;
+        })
+    );
+    const { result, unmount } = renderHook(() => useGuidSend(deps));
+    const sending = result.current.handleSend();
+    const failed = expect(sending).rejects.toThrow('left before setup completed');
+    await vi.waitFor(() => expect(ensureRuntimeMock).toHaveBeenCalled());
+    unmount();
+    ready();
+    await failed;
+    expect(setConfigOptionMock).not.toHaveBeenCalled();
+    expect(deps.navigate).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('acp_initial_message_conv-1')).toBeNull();
+  });
+
+  it('navigates after confirmed setup even if assistant cache refresh never resolves', async () => {
+    const deps = { ...createDeps(), initialAllowAll: { id: 'allow_all', value: 'on' } };
+    setConfigOptionMock.mockResolvedValue({
+      confirmation: 'observed',
+      config_options: [{ id: 'allow_all', current_value: 'on' }],
+    });
+    swrMutateMock.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useGuidSend(deps));
+    await act(() => result.current.handleSend());
+    expect(deps.navigate).toHaveBeenCalledWith('/conversation/conv-1');
+    expect(result.current.startup).toBeNull();
+  });
+
+  it('does not reuse a failed conversation for a different assistant or workspace', async () => {
+    const deps = { ...createDeps(), initialAllowAll: { id: 'allow_all', value: 'on' } };
+    ensureRuntimeMock.mockRejectedValue(new Error('timeout'));
+    const { result, rerender } = renderHook((props) => useGuidSend(props), { initialProps: deps });
+    await act(async () => {
+      await expect(result.current.handleSend()).rejects.toThrow('timeout');
+    });
+    rerender({ ...deps, dir: '/another-workspace', selectedAssistantId: 'another-assistant' });
+    await act(async () => {
+      await expect(result.current.handleSend()).rejects.toThrow('timeout');
+    });
+    expect(createConversationInvokeMock).toHaveBeenCalledTimes(2);
+  });
+
   it.each(['on', 'off', 'true', 'false'])('confirms allow_all=%s before the first prompt', async (value) => {
     const deps = { ...createDeps(), selectedAssistantBackend: 'copilot', initialAllowAll: { id: 'allow_all', value } };
     let confirm!: (result: unknown) => void;

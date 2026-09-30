@@ -1,4 +1,8 @@
 {
+  "startupStarting": "Démarrage de l’agent (90 secondes maximum)…",
+  "startupConfiguring": "Confirmation de {{option}} (45 secondes maximum)…",
+  "startupFailed": "Échec de la configuration ; le message n’est pas envoyé et la saisie est conservée. Cliquez sur Envoyer pour réessayer dans la même conversation, ou ouvrez-la pour examiner l’agent. Une opération expirée peut encore aboutir sur le serveur ; vérifiez les permissions avant un envoi manuel.",
+  "startupOpenConversation": "Ouvrir la conversation créée",
   "promptExamplesHint": "Essayez ces exemples de prompts :",
   "defaultPrompts": {
     "understand": "Découvre ce projet et explique-moi simplement ce qu'il fait et par où commencer",
