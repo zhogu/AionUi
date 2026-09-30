@@ -1,7 +1,7 @@
 # AionUi Web prebuilt package
 
 This branch contains a ready-to-deploy **Linux x86_64** build of AionUi Web
-2.2.2, rebuilt on 2026-09-29 with initial Copilot Allow all selection, context-window selection, Copilot draft
+2.2.2, rebuilt on 2026-09-30 with recoverable initial Copilot Allow all setup, context-window selection, Copilot draft
 queuing, native session titles, configuration-command routing, verified session
 recovery, graceful idle shutdown, realtime message reconciliation, duplicate final
 message fixes, single-message copying and CLI session ID display/copying from the
@@ -235,7 +235,7 @@ sha256sum "$INSTALL_DIR/bundled-aioncore/linux-x64/aioncore"
 ```
 
 The hash must match `backendSha256` in that installation's `build-info.json`.
-For the 2026-09-29 package documented here (unchanged backend), `backendSourceCommit` is
+For the 2026-09-30 package documented here (unchanged backend), `backendSourceCommit` is
 `65bb22a8447e5350645b29e6b1883710732acf13`; its backend SHA-256 is
 `e2b5af59b96d96b03e7f1111004d89d0c66ad11314937d439bd4c143d7263656`.
 The visible version `2.2.2` alone cannot distinguish our rebuilds.
@@ -337,6 +337,20 @@ runtime and confirms the selected setting before sending the first message,
 including for empty conversations. A failed or unconfirmed setting blocks the
 first message and displays an error. Existing sessions and global CLI settings
 are not changed.
+
+The creation page now shows which setup step is running. Runtime startup has a
+90-second client deadline; each config update has a 45-second deadline, including
+auth refresh and response-body reads. Assistant-cache refresh no longer blocks
+entry to the conversation. On failure, input and attachments are kept. Pressing
+Send again with unchanged creation parameters retries the same conversation.
+**Open created conversation** opens the already-created session with an unsent
+draft, so you can inspect agent errors instead of being trapped on the start page.
+Check permissions before sending manually: a client timeout does not necessarily
+cancel the server-side operation. No first prompt is automatically sent after an
+unconfirmed setting, timeout, or late completion after leaving the creation page.
+If setup still fails, record the displayed step/error and the matching backend
+logs (`runtime/ensure` versus `config-options/allow_all`); this distinguishes agent
+startup/authentication issues from permission confirmation or proxy/network stalls.
 
 Normal idle collection closes the ACP transport before terminating the process,
 allowing the custom adapter to stop its native child and release its session
