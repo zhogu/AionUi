@@ -115,7 +115,7 @@ export const useConversationSendBoxPrefill = (
   }, [conversation_id]);
 };
 
-const setDraft = <K extends DraftConversationType>(
+export const setSendBoxDraft = <K extends DraftConversationType>(
   type: K,
   conversation_id: string,
   draft: Extract<Draft, { _type: K }> | undefined
@@ -183,7 +183,7 @@ export const getSendBoxDraftHook = <K extends DraftConversationType>(
           .mutate(
             (prev) => {
               const newDraft = draft(prev ?? initialValue);
-              setDraft(type, conversation_id, newDraft);
+              setSendBoxDraft(type, conversation_id, newDraft);
               return newDraft;
             },
             { revalidate: false }

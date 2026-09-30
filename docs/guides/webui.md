@@ -488,6 +488,16 @@ adapter uses `true`/`false`. If absent, test the saved agent connection in Setti
 to refresh its capabilities. Unsupported agents do not show this control.
 Creation initializes the runtime and confirms the selected permission value
 before sending the first prompt, including when creating an empty conversation.
+The page displays the current step: runtime startup is limited to 90 seconds and
+each configuration request to 45 seconds, including response-body reads and
+authentication refresh. Assistant-list refresh does not block navigation.
+If setup stalls or fails, the page keeps the input and attachments and shows a
+persistent error. Sending again without changing the creation parameters retries
+the same conversation rather than creating another. **Open created conversation**
+opens it for inspection with the input as an unsent draft; check the agent's
+permissions before sending manually. A client timeout does not guarantee that the
+operation stopped on the server. Neither timeout nor a late response sends the
+first prompt automatically, and leaving the creation page cancels that handoff.
 If initialization or confirmation fails, an error is shown and the first prompt
 is not sent. Existing conversations and global CLI defaults are not modified.
 

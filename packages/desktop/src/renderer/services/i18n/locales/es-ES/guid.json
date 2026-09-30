@@ -1,4 +1,8 @@
 {
+  "startupStarting": "Iniciando agente (hasta 90 segundos)…",
+  "startupConfiguring": "Confirmando {{option}} (hasta 45 segundos)…",
+  "startupFailed": "Falló la configuración; el mensaje no se envió y el texto se conserva. Pulsa Enviar para reintentar en la misma conversación o ábrela para revisar el agente. Una operación agotada puede completarse en el servidor; comprueba los permisos antes de enviar manualmente.",
+  "startupOpenConversation": "Abrir conversación creada",
   "agentFallbackNotice": "{{original}} no está disponible, usando {{fallback}} en su lugar.",
   "noAgentAvailable": "No hay ningún agente principal disponible. Inicia sesión en Google o instala Claude/Codex CLI. ¿Ir a configuración?",
   "noAgentAvailableShort": "No hay agente principal disponible. Haz clic para configurar.",

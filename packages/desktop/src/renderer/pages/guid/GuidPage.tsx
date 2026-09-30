@@ -35,7 +35,7 @@ import { useOpenFileSelector } from '@/renderer/hooks/file/useOpenFileSelector';
 import { appendSpeechTranscript } from '@/renderer/hooks/system/useSpeechInput';
 import { useLiveTranscriptInsertion } from '@/renderer/hooks/system/useLiveTranscriptInsertion';
 import { ArrowRightUp } from '@icon-park/react';
-import { Button, ConfigProvider } from '@arco-design/web-react';
+import { Alert, Button, ConfigProvider } from '@arco-design/web-react';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -696,6 +696,30 @@ const GuidPage: React.FC = () => {
             localeKey={localeKey}
             onSelectAssistant={handleSelectAssistant}
           />
+
+          {send.startup && (
+            <Alert
+              type={send.startup.error ? 'error' : 'info'}
+              content={
+                <div role='status' data-testid='guid-startup-status'>
+                  <div>
+                    {t(send.startup.phase === 'starting' ? 'guid.startupStarting' : 'guid.startupConfiguring', {
+                      option: send.startup.option,
+                    })}
+                  </div>
+                  {send.startup.error && (
+                    <>
+                      <div>{t('guid.startupFailed')}</div>
+                      <div className='break-all'>{send.startup.error}</div>
+                      <Button disabled={guidInput.loading} onClick={send.openCreatedConversation}>
+                        {t('guid.startupOpenConversation')}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              }
+            />
+          )}
 
           <GuidInputCard
             focusRequestKey={navState?.focusPrefill && navState.prefillPrompt ? location.key : undefined}

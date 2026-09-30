@@ -340,7 +340,8 @@ export const conversation = {
   ),
   ensureRuntime: httpPost<EnsureConversationRuntimeResponse, { conversation_id: string }>(
     (p) => `/api/conversations/${p.conversation_id}/runtime/ensure`,
-    () => undefined
+    () => undefined,
+    { timeoutMs: 90_000 }
   ),
   /**
    * Restart the conversation's agent runtime: tears down the cached CLI agent
@@ -1193,7 +1194,9 @@ export const acpConversation = {
   ),
   setConfigOption: httpPut<SetConfigOptionResponse, { conversation_id: string; option_id: string; value: string }>(
     (p) => `/api/conversations/${p.conversation_id}/config-options/${encodeURIComponent(p.option_id)}`,
-    (p): SetConfigOptionRequest => ({ value: p.value })
+    (p): SetConfigOptionRequest => ({ value: p.value }),
+    undefined,
+    { timeoutMs: 45_000 }
   ),
 };
 
