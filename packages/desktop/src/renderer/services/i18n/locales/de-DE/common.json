@@ -1,4 +1,5 @@
 {
+  "pageLoadFailed": "Das Laden der Seite dauert zu lange oder ist fehlgeschlagen. Prüfen Sie die Verbindung und laden Sie die Seite neu.",
   "send": "Senden",
   "cancel": "Abbrechen",
   "save": "Speichern",

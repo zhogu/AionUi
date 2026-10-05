@@ -75,6 +75,23 @@ describe('static-server', () => {
     expect(await r.text()).toContain('hi');
   });
 
+  it('returns 404 for missing build assets instead of caching SPA HTML as JavaScript', async () => {
+    handle = await startStaticServer({ staticDir, backendPort: 1, port: 0 });
+    const response = await fetch(`${handle.localUrl}/assets/vendor-missing1.js`);
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain('<title>root</title>');
+  });
+
+  it('requires revalidation for HTML and the service worker', async () => {
+    await fs.writeFile(path.join(staticDir, 'sw.js'), '// worker');
+    handle = await startStaticServer({ staticDir, backendPort: 1, port: 0 });
+    for (const resource of ['/', '/index.html', '/sw.js']) {
+      const response = await fetch(`${handle.localUrl}${resource}`);
+      expect(response.headers.get('cache-control')).toBe('no-cache');
+      await response.text();
+    }
+  });
+
   it('/api/* reverse-proxies to backend', async () => {
     const backend = await startMockBackend((req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });

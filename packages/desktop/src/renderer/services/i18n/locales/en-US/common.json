@@ -1,4 +1,5 @@
 {
+  "pageLoadFailed": "Page resources are taking too long to load or failed to download. Check your connection and reload.",
   "send": "Send",
   "cancel": "Cancel",
   "save": "Save",

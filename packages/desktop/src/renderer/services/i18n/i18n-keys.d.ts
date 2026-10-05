@@ -317,6 +317,7 @@ export type I18nKey =
   | 'common.openInBuiltinBrowser'
   | 'common.openInSystemBrowser'
   | 'common.optional'
+  | 'common.pageLoadFailed'
   | 'common.processing'
   | 'common.readOnly'
   | 'common.refresh'

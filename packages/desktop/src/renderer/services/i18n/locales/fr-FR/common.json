@@ -1,4 +1,5 @@
 {
+  "pageLoadFailed": "Le chargement des ressources est trop lent ou a échoué. Vérifiez la connexion et rechargez la page.",
   "send": "Envoyer",
   "cancel": "Annuler",
   "save": "Enregistrer",

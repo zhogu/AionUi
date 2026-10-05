@@ -1,4 +1,5 @@
 {
+  "pageLoadFailed": "Os recursos da página estão demorando ou falharam ao baixar. Verifique a conexão e recarregue.",
   "send": "Enviar",
   "cancel": "Cancelar",
   "save": "Salvar",

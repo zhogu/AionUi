@@ -1,4 +1,5 @@
 {
+  "pageLoadFailed": "Sayfa kaynakları çok yavaş yükleniyor veya indirilemedi. Bağlantınızı kontrol edip sayfayı yeniden yükleyin.",
   "send": "Gönder",
   "cancel": "İptal",
   "save": "Kaydet",

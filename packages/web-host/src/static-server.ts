@@ -189,9 +189,16 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
       }
 
       // static files + SPA fallback
+      const pathname = new URL(req.url, 'http://localhost').pathname;
+      const isAsset =
+        pathname.startsWith('/assets/') ||
+        pathname.startsWith('/pwa/') ||
+        pathname === '/sw.js' ||
+        pathname === '/manifest.webmanifest';
+      if (!isAsset || pathname === '/sw.js') res.setHeader('Cache-Control', 'no-cache');
       await serveHandler(req, res, {
         public: opts.staticDir,
-        rewrites: [{ source: '**', destination: '/index.html' }],
+        rewrites: isAsset ? [] : [{ source: '**', destination: '/index.html' }],
       });
     } catch (err) {
       if (!res.headersSent) {
