@@ -56,6 +56,26 @@ function iconParkPlugin() {
 const desktopSrcRoot = resolve('packages/desktop/src');
 const rendererRoot = resolve('packages/desktop/src/renderer');
 
+function bootstrapMessagesPlugin() {
+  return {
+    name: 'bootstrap-messages',
+    transformIndexHtml(html: string) {
+      const { supportedLanguages } = JSON.parse(
+        readFileSync(resolve(desktopSrcRoot, 'common/config/i18n-config.json'), 'utf8')
+      ) as { supportedLanguages: string[] };
+      const messages = Object.fromEntries(
+        supportedLanguages.map((language) => {
+          const common = JSON.parse(
+            readFileSync(resolve(rendererRoot, 'services/i18n/locales', language, 'common.json'), 'utf8')
+          ) as { loading: string; reload: string; pageLoadFailed: string };
+          return [language, { loading: common.loading, reload: common.reload, failed: common.pageLoadFailed }];
+        })
+      );
+      return html.replace('__AIONUI_BOOT_MESSAGES__', JSON.stringify(messages).replace(/</g, '\\u003c'));
+    },
+  };
+}
+
 const mainAliases = {
   '@': desktopSrcRoot,
   '@common': resolve('packages/desktop/src/common'),
@@ -239,6 +259,7 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [
         UnoCSS(unoConfig),
+        bootstrapMessagesPlugin(),
         iconParkPlugin(),
         ...(enableSentrySourceMaps ? [sentryVitePlugin(sentryPluginOptions)] : []),
       ],

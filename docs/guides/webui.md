@@ -473,6 +473,47 @@ Access from other devices: `http://YOUR_IP_ADDRESS:3000`
 
 ## Troubleshooting
 
+### Incomplete downloads and blank pages on slow networks
+
+`ERR_CONTENT_LENGTH_MISMATCH 200` means response headers arrived but the body did
+not match the promised length. The HTTP 200 alone does not prove a successful
+JavaScript download. The vendor bundle is required to render the application.
+Browser-extension `contentscript.js` / `ObjectMultiplex` warnings are separate
+evidence; check their source URL before attributing them to AionUi.
+
+The WebUI service worker caches complete, content-hashed JS/CSS files by exact
+URL and reuses them without downloading them again. Cold downloads retry once on
+network/body failure, with a 60-second deadline per attempt. Optional precache
+failures no longer prevent service-worker installation. HTML stays network-first
+(15-second deadline before offline fallback); an asset request never receives
+cached HTML or a different build's hash. API/auth requests are not cached.
+Activation does not force-reload open tabs or discard drafts.
+
+On the first visit, before a service worker controls the page, an inline loading
+message and manual reload link work even if React fails to download. The link
+appears on a script/style load error or after 15 seconds; a slow download is not
+cancelled and can still finish. This small HTML fallback deliberately uses a
+native link rather than Arco, because Arco is inside the potentially failed
+vendor bundle. Its messages are inlined from the regular locale files at build
+time and use the browser language.
+
+These safeguards do not repair a persistently broken proxy or make a first-time
+offline visit possible. For truncated downloads, compare the **full GET body**
+from the local WebUI port and public proxy (not just `curl -I`). Use the exact
+hashed asset named in the page; bypass the browser service worker during diagnosis.
+Check nginx's error log for `upstream prematurely closed connection`, permission
+errors on `proxy_temp_path`, disk-full errors and timeouts. Check compression
+filters, upstream restarts and any manually overridden `Content-Length` too.
+The deployment example disables proxy buffering/cache; retain that setting or
+ensure the nginx worker can write its configured temporary directory. Do not use
+`chmod 777`, disable authentication, or raise EventEmitter listener limits as a fix.
+
+After installing an updated build, allow the service worker to update, then reload
+the page manually. If a broken old worker prevents startup, use DevTools →
+Application → Service Workers → **Bypass for network** / **Unregister** for this
+application only and reload. Do not clear all site data: that can remove login
+state and locally stored drafts.
+
 ### Initial Copilot permissions
 
 When creating a Copilot conversation, **Allow all** appears next to the mode

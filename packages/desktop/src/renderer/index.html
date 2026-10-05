@@ -32,6 +32,21 @@
         padding: 0;
         overflow: hidden;
       }
+      #boot-status {
+        box-sizing: border-box;
+        padding: 32px;
+        max-width: 640px;
+        margin: 15vh auto;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        color: var(--color-text-1, CanvasText);
+      }
+      #boot-status a {
+        display: inline-block;
+        padding: 12px 0;
+        color: LinkText;
+      }
     </style>
   </head>
   <body>
@@ -42,7 +57,53 @@
         if (t) document.body.setAttribute('arco-theme', t);
       } catch (e) {}
     </script>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot-status" role="status">
+        <strong>AionUi</strong>
+        <p id="boot-message"></p>
+        <a id="boot-reload" href="" hidden></a>
+      </div>
+    </div>
+    <script>
+      // This recovery UI must work even when React/the vendor chunk never loads.
+      (function () {
+        var messages = __AIONUI_BOOT_MESSAGES__;
+        var language = navigator.language || 'en-US';
+        var locale = messages[language]
+          ? language
+          : Object.keys(messages).find(function (key) {
+              return key.split('-')[0] === language.split('-')[0];
+            });
+        var text = messages[locale] || messages['en-US'];
+        var status = document.getElementById('boot-status');
+        var message = document.getElementById('boot-message');
+        var reload = document.getElementById('boot-reload');
+        message.textContent = text.loading;
+        reload.textContent = text.reload;
+        reload.onclick = function (event) {
+          event.preventDefault();
+          window.location.reload();
+        };
+        function failed() {
+          if (!status.isConnected) return;
+          message.textContent = text.failed;
+          reload.hidden = false;
+        }
+        function onError(event) {
+          var target = event.target;
+          if (target && (target.tagName === 'SCRIPT' || target.tagName === 'LINK')) failed();
+        }
+        window.addEventListener('error', onError, true);
+        var timer = setTimeout(failed, 15000);
+        var observer = new MutationObserver(function () {
+          if (status.isConnected) return;
+          clearTimeout(timer);
+          window.removeEventListener('error', onError, true);
+          observer.disconnect();
+        });
+        observer.observe(document.getElementById('root'), { childList: true });
+      })();
+    </script>
     <script type="module" src="./main.tsx"></script>
   </body>
 </html>
