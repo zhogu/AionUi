@@ -9,7 +9,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ipcBridge } from '@/common';
 import { emitter } from '@/renderer/utils/emitter';
-import type { IMessageAcpToolCall, IMessageText, IMessageThinking } from '@/common/chat/chatLib';
+import type { IMessageAcpToolCall, IMessageText, IMessageThinking, IMessageToolCall } from '@/common/chat/chatLib';
 import {
   MessageListLoadingProvider,
   MessageListProvider,
@@ -18,6 +18,7 @@ import {
   useMessageLstCache,
   useMessageList,
   useReplaceWithAnchorWindow,
+  prependHistoryMessages,
 } from '@/renderer/pages/conversation/Messages/hooks';
 
 vi.mock('@/common', () => ({
@@ -151,6 +152,95 @@ describe('message merging', () => {
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it.each(['visibility', 'reconnect'])('keeps one task_complete after %s history reconciliation', async (trigger) => {
+    const invoke = vi.mocked(ipcBridge.database.getConversationMessages.invoke);
+    const page = (items: IMessageAcpToolCall[]) => ({
+      items,
+      oldest_cursor: null,
+      newest_cursor: null,
+      has_more_before: false,
+      has_more_after: false,
+    });
+    invoke.mockResolvedValue(page([]));
+    const { result } = renderHook(
+      () => {
+        useMessageLstCache(CONVERSATION_ID);
+        return useMessageHarness();
+      },
+      { wrapper: CacheWrapper }
+    );
+    await flushMessageQueue();
+    const persisted = createToolCallMessage('completion-call');
+    persisted.content.update.title = 'task_complete';
+    persisted.content.update.raw_output = { content: 'Final answer' };
+    const live = { ...persisted, id: 'temporary-ui-row', msg_id: 'turn-envelope-id' };
+    act(() => result.current.addOrUpdateMessage(live));
+    await flushMessageQueue();
+    invoke.mockResolvedValue(page([persisted]));
+    for (let i = 0; i < 2; i++) {
+      await act(async () => {
+        if (trigger === 'visibility') {
+          vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+          document.dispatchEvent(new Event('visibilitychange'));
+        } else {
+          const reconnect = vi.mocked(ipcBridge.realtime.reconnected.on).mock.calls.at(-1)![0];
+          reconnect({ timestamp: Date.now() });
+        }
+      });
+    }
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0].id).toBe(persisted.id);
+    act(() => result.current.addOrUpdateMessage(live));
+    await flushMessageQueue();
+    expect(result.current.messages).toHaveLength(1);
+  });
+
+  it('preserves different tool calls sharing one stream envelope when loading an anchor window', async () => {
+    const { result } = renderHook(() => useAnchorMessageHarness(), { wrapper: TestWrapper });
+    const first = createToolCallMessage('call-1');
+    const second = createToolCallMessage('call-2');
+    act(() => {
+      result.current.addOrUpdateMessage({ ...first, id: 'live-1', msg_id: 'shared-turn' });
+      result.current.addOrUpdateMessage({ ...second, id: 'live-2', msg_id: 'shared-turn' });
+    });
+    await flushMessageQueue();
+    act(() => result.current.replaceWithAnchorWindow(CONVERSATION_ID, [first]));
+    expect(
+      result.current.messages.map((message) => (message as IMessageAcpToolCall).content.update.tool_call_id)
+    ).toEqual(['call-1', 'call-2']);
+  });
+
+  it('does not prepend a persisted copy of an already-live ACP tool call', () => {
+    const persisted = createToolCallMessage('call-1');
+    const live = { ...persisted, id: 'temporary-id', msg_id: 'turn-id' };
+    expect(prependHistoryMessages([live], [persisted])).toEqual([live]);
+  });
+
+  it('uses call identity for non-ACP tools too, without dropping other calls with identical output', () => {
+    const persisted: IMessageToolCall = {
+      id: 'call-1',
+      msg_id: 'call-1',
+      conversation_id: CONVERSATION_ID,
+      type: 'tool_call',
+      content: { call_id: 'call-1', name: 'shell', args: {}, output: 'same output', status: 'completed' },
+    };
+    const live = { ...persisted, id: 'temporary-id', msg_id: 'turn-id' };
+    const other = {
+      ...persisted,
+      id: 'call-2',
+      msg_id: 'turn-id',
+      content: { ...persisted.content, call_id: 'call-2' },
+    };
+    expect(prependHistoryMessages([live], [persisted, other])).toEqual([other, live]);
+  });
+
+  it('falls back to row identity for legacy tools lacking call and envelope IDs', () => {
+    const first = { ...createToolCallMessage(''), id: 'legacy-1', msg_id: undefined };
+    const second = { ...first, id: 'legacy-2' };
+    expect(prependHistoryMessages([first], [first, second])).toEqual([second, first]);
   });
 
   it('keeps text segments split when tool calls interrupt the same msg_id stream', async () => {

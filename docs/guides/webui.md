@@ -473,6 +473,15 @@ Access from other devices: `http://YOUR_IP_ADDRESS:3000`
 
 ## Troubleshooting
 
+### Final reply appears twice after returning to the tab
+
+ACP completion tools (including Copilot `task_complete`) use a turn-level message
+ID in live events but a tool-call ID in persisted history. History refreshes now
+match the stable tool-call ID, just like live updates, so returning to a tab,
+reconnecting or loading another history page does not append a second completion
+card. Different calls remain separate even when their output text is identical.
+This is a client reconciliation fix; stored messages are not deleted or rewritten.
+
 ### Incomplete downloads and blank pages on slow networks
 
 `ERR_CONTENT_LENGTH_MISMATCH 200` means response headers arrived but the body did

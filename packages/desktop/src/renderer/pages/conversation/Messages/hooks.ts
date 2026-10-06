@@ -801,6 +801,14 @@ export function normalizeDbMessage(msg: TMessage): TMessage {
 }
 
 const getMessageMergeKey = (message: TMessage): string => {
+  // Stream envelopes use the turn's msg_id; persisted tool rows use the call ID.
+  // Match the same identity as composeMessageWithIndex, not the envelope ID.
+  if (message.type === 'acp_tool_call' && message.content?.update?.tool_call_id) {
+    return `acp_tool_call:${message.content.update.tool_call_id}`;
+  }
+  if (message.type === 'tool_call' && message.content?.call_id) {
+    return `tool_call:${message.content.call_id}`;
+  }
   if (message.type === 'text') return getMessageIndexKey(message) ?? `id:${message.id}`;
   if (message.msg_id) return `${message.type}:${message.msg_id}`;
   return `id:${message.id}`;
