@@ -1,7 +1,7 @@
 # AionUi Web prebuilt package
 
 This branch contains a ready-to-deploy **Linux x86_64** build of AionUi Web
-2.2.2, rebuilt on 2026-10-05 with interrupted-download recovery, recoverable initial Copilot Allow all setup, context-window selection, Copilot draft
+2.2.2, rebuilt on 2026-10-06 with completion-message reconciliation, interrupted-download recovery, recoverable initial Copilot Allow all setup, context-window selection, Copilot draft
 queuing, native session titles, configuration-command routing, verified session
 recovery, graceful idle shutdown, realtime message reconciliation, duplicate final
 message fixes, single-message copying and CLI session ID display/copying from the
@@ -235,7 +235,7 @@ sha256sum "$INSTALL_DIR/bundled-aioncore/linux-x64/aioncore"
 ```
 
 The hash must match `backendSha256` in that installation's `build-info.json`.
-For the 2026-10-05 package documented here (unchanged backend), `backendSourceCommit` is
+For the 2026-10-06 package documented here (unchanged backend), `backendSourceCommit` is
 `65bb22a8447e5350645b29e6b1883710732acf13`; its backend SHA-256 is
 `e2b5af59b96d96b03e7f1111004d89d0c66ad11314937d439bd4c143d7263656`.
 The visible version `2.2.2` alone cannot distinguish our rebuilds.
@@ -321,6 +321,14 @@ custom adapter does not inherit that backend-specific default; its existing
 Draft box can be switched to automatic mode explicitly.
 
 ## Session lifecycle and recovery
+
+### Duplicate completion replies after returning to a tab
+
+History reconciliation now matches ACP tools (including `task_complete`) by
+their stable tool-call ID, not the live turn's envelope message ID. Returning
+to the tab, reconnecting or loading history no longer appends a second copy of
+the same completion. Different tool calls remain separate even if their text
+is identical. Existing stored messages are not deleted or rewritten.
 
 ### Slow networks and interrupted asset downloads
 
