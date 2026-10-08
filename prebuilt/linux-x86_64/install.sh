@@ -73,5 +73,9 @@ echo "AionUi Web ${VERSION} installed at ${INSTALL_DIR}"
 if [[ -n "$backup_dir" ]]; then
   echo "Previous installation backed up at ${backup_dir}"
 fi
-echo "Start with: ${BIN_DIR}/aionui-web start"
+echo "Manual foreground start (not service registration): ${BIN_DIR}/aionui-web start --port 25808 --no-open"
 echo "Optional custom ACP agent command: ${INSTALL_DIR}/copilot-acp (arguments: --acp)"
+echo 'Recommended Linux deployment: system-level aionui-webui.service, running as the installation owner.'
+echo "Service template: ${SCRIPT_DIR}/aionui-webui.service (replace YOUR_USER/YOUR_GROUP and review paths/port)."
+echo "Setup, upgrade and user-service migration: ${SCRIPT_DIR}/README.md"
+echo 'No service was created, stopped, started, renamed or migrated by this installer.'

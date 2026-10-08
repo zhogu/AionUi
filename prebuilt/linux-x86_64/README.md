@@ -18,7 +18,8 @@ machines without the backend source checkout.
 No Node.js, Bun, dependency installation, or local build is required.
 Native Copilot CLI must still be installed and authenticated separately.
 
-Deployment sections: [Install](#install), [Upgrade](#upgrade-an-existing-service),
+Deployment sections: [Install](#install), [Standard service](#standard-linux-service),
+[Migration](#migrate-an-existing-user-service), [Upgrade](#upgrade-an-existing-service),
 [nginx / HTTPS](#nginx--https), [Missing icons](#diagnosing-missing-icons).
 
 ## Install
@@ -34,11 +35,14 @@ Stop an existing service on the **target machine** before replacing its installa
 The installer backs up the old installation but does not stop/start services or
 modify conversation data.
 
-Start the service:
+For a temporary foreground run only (not a registered service):
 
 ```bash
 ~/.local/bin/aionui-web start --port 25808 --no-open
 ```
+
+For a permanent Linux deployment, follow [Standard Linux service](#standard-linux-service).
+Do not run the foreground command alongside an existing service.
 
 The installer reconstructs the archive from the GitHub-safe split files,
 verifies its SHA-256 checksum, installs it under
@@ -79,6 +83,193 @@ unit. It does **not** configure systemd, nginx, TLS certificates, firewall rules
 or agent authentication. The archive checksum validates the downloaded package,
 not which executable an already-running service is using.
 
+## Standard Linux service
+
+This is the canonical deployment convention for this fork's standalone Linux
+WebUI package, not the Electron `.deb` / Xvfb installer. New deployments use:
+
+| Setting                          | Convention                                                               |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| Service name / manager           | `aionui-webui.service`, **system** systemd                               |
+| Service file                     | `/etc/systemd/system/aionui-webui.service`                               |
+| Runtime identity                 | Ordinary installation owner, never root                                  |
+| Program                          | `/home/YOUR_USER/.local/share/aionui-web/aionui-web`                     |
+| Home / initial working directory | The installation owner's actual home                                     |
+| Persistent data                  | Explicit `--data-dir`, default `/home/YOUR_USER/.aionui-web`             |
+| Listen address / port            | `127.0.0.1:25808`, behind nginx HTTPS                                    |
+| Status / logs                    | `sudo systemctl` / `sudo journalctl`, **without** `--user`               |
+| Startup                          | Enabled at boot; independent of interactive login, no user linger needed |
+
+Existing ports and data directories are **not renamed** by this convention.
+For example, preserve port `25818` and
+`/home/ggspace/.config/AionUi/aionui` when migrating that deployment; changing
+the data directory can make existing conversations appear missing. A service
+managed by the system can still run entirely as an ordinary user.
+
+### Register a new deployment
+
+Install the package and authenticate Copilot as the intended runtime user first.
+Systemd does not source Conda, NVM or shell startup files: add the actual CLI
+directory to the template's `PATH` if it is not already included. Preserve any
+required `COPILOT_HOME`, `AIONUI_COPILOT_CLI` or other environment settings when
+migrating. Do not copy credentials into a world-readable unit or post them in logs.
+
+Before creating a service, check both managers and the chosen port:
+
+```bash
+systemctl list-unit-files --type=service --no-pager | grep -Ei 'aion' || true
+systemctl --user list-unit-files --type=service --no-pager | grep -Ei 'aion' || true
+sudo ss -ltnp 'sport = :25808'
+```
+
+An existing service or listener requires inspection/migration, not a second
+instance. The user-manager command only checks the current user; installations
+owned by another account must be checked under that account too.
+
+From `prebuilt/linux-x86_64`, copy the supplied template into a staging directory:
+
+```bash
+mkdir -p ~/.config/aionui-service-staging
+cp -i aionui-webui.service ~/.config/aionui-service-staging/aionui-webui.service
+```
+
+Edit that staged file before proceeding. Replace **every** `YOUR_USER` /
+`YOUR_GROUP` (`id -un` / `id -gn` identify the current account), use the actual
+absolute home and installation paths, and set the intended port/data directory.
+Systemd unit values do not expand `~` or shell `$HOME`. Quote paths containing
+spaces using systemd syntax. Keep any existing explicit `--log-dir`; otherwise
+use journald for service stdout/stderr.
+
+The following block deliberately refuses to overwrite an existing system unit:
+
+```bash
+(
+  set -e
+  unit="$HOME/.config/aionui-service-staging/aionui-webui.service"
+  if grep -qE 'YOUR_USER|YOUR_GROUP' "$unit"; then
+    echo 'Edit the service template placeholders first.' >&2
+    exit 1
+  fi
+  sudo -v
+  if sudo systemctl cat aionui-webui.service >/dev/null 2>&1 ||
+     sudo test -e /etc/systemd/system/aionui-webui.service ||
+     sudo test -L /etc/systemd/system/aionui-webui.service; then
+    echo 'Existing system unit found; inspect it instead of overwriting it.' >&2
+    exit 1
+  fi
+  systemd-analyze verify "$unit"
+  sudo install -m 0644 "$unit" /etc/systemd/system/aionui-webui.service
+  sudo systemctl daemon-reload
+)
+```
+
+For a **new deployment with no old instance**, start and check it:
+
+```bash
+sudo systemctl enable --now aionui-webui.service
+sudo systemctl status aionui-webui.service --no-pager -l
+sudo journalctl -u aionui-webui.service -n 100 --no-pager
+curl --noproxy '*' -fsS --max-time 15 -o /dev/null \
+  -w 'HTTP %{http_code}, %{size_download} bytes, %{time_total}s\n' \
+  http://127.0.0.1:25808/
+```
+
+`active (running)` alone is insufficient: the full HTTP request must complete.
+Then check authenticated browser API requests and `/ws` (101 handshake) through
+nginx. If startup fails, inspect the journal before enabling any other instance.
+`NoNewPrivileges=true` intentionally prevents agents from gaining privileges
+through `sudo`; administer the service from an SSH/admin shell, not an agent tool.
+
+### Memory budget
+
+The template enables accounting but does **not** impose a universal memory cap.
+Limits apply to the whole service tree: WebUI, AionCore, Copilot and tool subprocesses.
+Budget for concurrent agents and other services on the host. A 384 MiB high /
+512 MiB maximum budget caused continuous reclaim and an unresponsive listening
+port in a real deployment; restarting or increasing nginx timeouts is not the fix.
+
+Where host capacity supports it, an example (not a required default) is:
+
+```bash
+sudo systemctl set-property aionui-webui.service MemoryHigh=1536M MemoryMax=2G
+sudo systemctl show aionui-webui.service \
+  -p MemoryCurrent -p MemoryHigh -p MemoryMax -p ControlGroup -p DropInPaths
+```
+
+This persists resource overrides without restarting. For an existing user service,
+use `systemctl --user set-property ACTUAL_NAME.service ...` instead. Its generated
+`~/.config/systemd/user.control/` settings are **not** inherited by a new system
+service. Inspect effective limits, ancestor cgroup limits and host memory; carry
+the intended budget across migration, not the old restrictive drop-in.
+
+## Migrate an existing user service
+
+Migration is manual and requires a maintenance window. **Stop interrupts agent
+work.** Do not migrate during running requests, and do not run both managers
+against the same data directory, even on different ports.
+
+1. As the existing installation owner, inspect `systemctl --user cat aionui.service`
+   and `systemctl --user show aionui.service -p ExecStart -p Environment -p DropInPaths -p MemoryHigh -p MemoryMax`.
+   Record whether it was enabled, and preserve its unit/drop-ins for rollback.
+   These outputs can contain secrets: keep them local.
+2. Prepare/register the system unit as above, **without starting or enabling it**.
+   Preserve the runtime user, HOME, executable, PATH, data/log directories, port,
+   agent environment and reviewed resource budget. Do not reinstall the program
+   or change nginx at the same time as changing managers.
+3. Wait for work to finish. Stop the old unit, take a consistent backup of the
+   actual data directory, and confirm the old service's child processes and port
+   listener have exited. Do not force-kill them to proceed.
+4. Start the new unit; verify direct HTTP, nginx, login, existing conversations
+   and WebSocket connectivity. Only then disable the old unit and enable the new.
+
+For the known legacy **user** service `aionui.service` on port **25818**:
+
+```bash
+# Run as its owner. Stop here for the data backup and process/listener checks.
+systemctl --user stop aionui.service
+systemctl --user is-active aionui.service
+sudo ss -ltnp 'sport = :25818'
+
+# Proceed only after the old instance has fully stopped and backup is complete.
+sudo systemctl start aionui-webui.service
+sudo systemctl status aionui-webui.service --no-pager -l
+curl --noproxy '*' -fsS --max-time 15 -o /dev/null \
+  -w 'HTTP %{http_code}, %{size_download} bytes, %{time_total}s\n' \
+  http://127.0.0.1:25818/
+
+# After browser verification succeeds:
+systemctl --user disable aionui.service
+sudo systemctl enable aionui-webui.service
+```
+
+If verification fails, **stop and confirm the new instance has exited first**,
+then roll back to the preserved user unit:
+
+```bash
+sudo systemctl disable --now aionui-webui.service
+sudo ss -ltnp 'sport = :25818'
+# Only after the port and new service process tree are clear:
+systemctl --user start aionui.service
+# If the old unit was enabled before migration, restore that setting:
+systemctl --user enable aionui.service
+```
+
+Do not remove the old configuration/data as part of migration. Do not disable
+user linger globally: other user services may rely on it.
+
+### Routine operations
+
+| Operation                 | Standard system service                                     | Legacy user service (example)                           |
+| ------------------------- | ----------------------------------------------------------- | ------------------------------------------------------- |
+| Status                    | `sudo systemctl status aionui-webui.service`                | `systemctl --user status aionui.service`                |
+| Recent logs               | `sudo journalctl -u aionui-webui.service -n 100 --no-pager` | `journalctl --user -u aionui.service -n 100 --no-pager` |
+| Follow logs               | `sudo journalctl -u aionui-webui.service -f`                | `journalctl --user -u aionui.service -f`                |
+| Restart (interrupts work) | `sudo systemctl restart aionui-webui.service`               | `systemctl --user restart aionui.service`               |
+
+Never put `sudo` before `systemctl --user` to manage another user's service.
+`Unit ... could not be found` may mean the wrong manager/name, not a missing
+installation.
+
 ## Upgrade an existing service
 
 Wait for running requests to finish: stopping the service interrupts active work.
@@ -91,6 +282,7 @@ installation owner (adjust the checkout, service name and install paths if neede
   cd ~/repo/AionUI-build
   git switch build
   git pull --ff-only origin build
+  sudo -v
   sudo systemctl stop aionui-webui.service
   bash prebuilt/linux-x86_64/install.sh
   sudo systemctl start aionui-webui.service
@@ -101,6 +293,10 @@ installation owner (adjust the checkout, service name and install paths if neede
 If installation fails, the block stops before starting the service. Inspect the
 error and retain the backup; do not remove data directories. Installation backups
 are **not database backups**. Use your normal data backup procedure before upgrades.
+For a legacy user service, use its actual `systemctl --user` stop/start/status
+commands instead. Keep `INSTALL_DIR` and `BIN_DIR` overrides consistent with its
+current installation. An upgrade does not migrate service managers or resource
+limits; migration is a separate maintenance operation.
 
 Check `sudo systemctl cat aionui-webui.service` locally: `ExecStart` must reference
 the intended installation. `--backend-bin` or `AIONUI_BACKEND_BIN` can override the

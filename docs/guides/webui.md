@@ -183,7 +183,26 @@ Run it:
 start-aionui-webui.sh
 ```
 
-### Method 4: Systemd Service (Background)
+### Standalone WebUI package: standard Linux deployment
+
+For this fork's prebuilt `aionui-web` package, use the
+[canonical deployment guide and service template on the build branch](https://github.com/zhogu/AionUi/tree/build/prebuilt/linux-x86_64#standard-linux-service).
+New deployments use a **system-level `aionui-webui.service` running as an ordinary
+installation owner**, with explicit HOME, PATH, data directory and port (25808
+by default). Manage it with `sudo systemctl` and `sudo journalctl`, not `--user`.
+The installer replaces program files only; it does not register, start or migrate
+services. The guide covers registration, memory budgets, upgrades, and migration
+with rollback from legacy user-level services such as `aionui.service`.
+
+Existing deployments retain their real port/data paths until an explicit
+maintenance-window migration. Do not start a second instance against the same
+data directory. `scripts/install-ubuntu.sh` installs the Electron/headless package;
+it is not the standalone prebuilt-package deployment path.
+
+### Method 4: Electron Systemd Service (Background)
+
+The following example is for an Electron installation, **not** `aionui-web`.
+Do not register it alongside the standalone service under the same name.
 
 Create `/etc/systemd/system/aionui-webui.service`:
 

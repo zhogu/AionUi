@@ -1,0 +1,21 @@
+[Unit]
+Description=AionUi Web (frontend and API)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+Group=YOUR_GROUP
+WorkingDirectory=/home/YOUR_USER
+Environment=HOME=/home/YOUR_USER
+Environment=PATH=/home/YOUR_USER/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/YOUR_USER/.local/share/aionui-web/aionui-web start --port 25808 --no-open --data-dir /home/YOUR_USER/.aionui-web
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+MemoryAccounting=yes
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
