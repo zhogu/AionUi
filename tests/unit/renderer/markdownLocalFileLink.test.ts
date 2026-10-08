@@ -12,6 +12,34 @@ import {
 } from '@/renderer/components/Markdown/markdownUtils';
 
 describe('resolveLocalFileLinkPath', () => {
+  it.each(['src/stockkit/research.py', './research.py', '../research.py', 'research.py'])(
+    'recognizes relative file references only in an enabled file-preview context: %s',
+    (path) => {
+      expect(resolveLocalFileLinkReference(`${path}#L419`, undefined, true)).toMatchObject({
+        filePath: path,
+        line: 419,
+        rawReference: `${path}#L419`,
+      });
+      expect(resolveLocalFileLinkReference(`${path}:419:7`, undefined, true)).toMatchObject({
+        filePath: path,
+        line: 419,
+        column: 7,
+      });
+      expect(resolveLocalFileLinkReference(path)).toBeNull();
+    }
+  );
+
+  it.each([
+    'https://example.com/src/file.py#L4',
+    '//example.com/src/file.py',
+    'mailto:user@example.com',
+    'javascript:alert(1)',
+    '#heading',
+    '/settings',
+    'docs/file.md?download=1',
+  ])('does not turn a URL or route into a relative file: %s', (href) => {
+    expect(resolveLocalFileLinkReference(href, undefined, true)).toBeNull();
+  });
   it('recognizes Windows absolute paths emitted as root-relative markdown links', () => {
     expect(resolveLocalFileLinkPath('/C:/Users/Administrator/AppData/Roaming/AionUi/report.xlsx')).toBe(
       'C:/Users/Administrator/AppData/Roaming/AionUi/report.xlsx'

@@ -99,7 +99,7 @@ export const useConversationRuntimeView = (conversation_id: string): UseConversa
     const hydrate = () => {
       const currentRequest = ++request;
       const snapshot = getConversationRuntimeViewSnapshot(conversation_id);
-      void getConversationOrNull(conversation_id)
+      return getConversationOrNull(conversation_id)
         .then((conversation) => {
           if (
             cancelled ||
@@ -126,7 +126,7 @@ export const useConversationRuntimeView = (conversation_id: string): UseConversa
           flushRuntimeViewLogs(hydrateFailed(conversation_id, normalizeReason(reason)));
         });
     };
-    const dispose = subscribeConversationResync(hydrate);
+    const dispose = subscribeConversationResync(hydrate, conversation_id);
     hydrate();
 
     return () => {

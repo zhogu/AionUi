@@ -590,11 +590,30 @@ describe('MessageText attachment paths', () => {
         { replace: true }
       );
     });
+
     // Content read by Local ChatFileRef over /content (utf8), not the legacy path endpoints.
     expect(ipcBridge.fs.readContent.invoke).toHaveBeenCalledWith({
       file: { kind: 'local', path: filePath },
       encoding: 'utf8',
     });
+  });
+
+  it('resolves a relative source reference against the conversation workspace before reading', async () => {
+    localFileLinkMocks.payload = {
+      path: 'src/stockkit/research.py',
+      reference: { filePath: 'src/stockkit/research.py', rawReference: 'src/stockkit/research.py#L419', line: 419 },
+    };
+    vi.mocked(ipcBridge.fs.readContent.invoke).mockResolvedValue('print("file content")');
+    renderMessageWithLocalLink('[research.py:419](src/stockkit/research.py#L419)');
+    fireEvent.click(screen.getByRole('button', { name: 'open local file' }));
+    await waitFor(() =>
+      expect(previewMocks.openPreview).toHaveBeenCalledWith(
+        'print("file content")',
+        'code',
+        expect.objectContaining({ file_path: '/workspace/demo/src/stockkit/research.py', targetLine: 419 }),
+        { replace: true }
+      )
+    );
   });
 
   it('opens hash range local markdown links with only the start line in preview metadata', async () => {

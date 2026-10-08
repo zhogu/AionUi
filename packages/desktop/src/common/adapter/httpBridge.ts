@@ -540,7 +540,11 @@ function ensureWs(): void {
       };
       const eventName = msg.name ?? msg.event;
       const payload = msg.data ?? msg.payload;
-      console.debug('[WS:msg]', eventName, JSON.stringify(payload).slice(0, 200));
+      if (eventName === 'ping') {
+        current.send(JSON.stringify({ name: 'pong', data: { timestamp: Date.now() } }));
+        return;
+      }
+      console.debug('[WS:msg]', eventName);
       if (eventName) {
         dispatchWsEvent(eventName, payload);
       }

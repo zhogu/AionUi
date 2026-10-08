@@ -496,6 +496,25 @@ describe('httpBridge', () => {
       vi.restoreAllMocks();
     });
 
+    it('answers server heartbeats without dispatching them as application messages', () => {
+      const ping = vi.fn();
+      transport.wsEmitter('ping').on(ping);
+      const socket = FakeWebSocket.instances[0];
+      socket.dispatchOpen();
+      socket.dispatchMessage('ping', { timestamp: 1 });
+      expect(JSON.parse(socket.send.mock.calls[0][0])).toEqual({ name: 'pong', data: { timestamp: Date.now() } });
+      expect(ping).not.toHaveBeenCalled();
+    });
+
+    it('delivers named events even when their payload is absent', () => {
+      const receive = vi.fn();
+      transport.wsEmitter('test.empty').on(receive);
+      const socket = FakeWebSocket.instances[0];
+      socket.dispatchOpen();
+      socket.dispatchMessage('test.empty', undefined);
+      expect(receive).toHaveBeenCalledOnce();
+    });
+
     it('keeps an open socket and does not send or replay frames', () => {
       const reconnect = vi.fn();
       transport.wsEmitter('realtime.reconnected').on(reconnect);
