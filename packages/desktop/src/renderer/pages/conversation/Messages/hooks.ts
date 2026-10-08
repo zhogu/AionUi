@@ -1052,11 +1052,11 @@ export const useMessageLstCache = (key: string) => {
   useEffect(() => {
     if (!key) return;
     const refresh = () => {
-      void loadMessages().catch((error) => {
+      return loadMessages().catch((error) => {
         console.error('[useMessageLstCache] Failed to reconcile messages:', error);
       });
     };
-    const disposeResync = subscribeConversationResync(refresh);
+    const disposeResync = subscribeConversationResync(refresh, key, true);
     const disposeAccepted = addEventListener('chat.message.accepted', (conversationId) => {
       if (conversationId === key) refresh();
     });

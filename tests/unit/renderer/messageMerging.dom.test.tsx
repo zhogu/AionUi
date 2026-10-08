@@ -23,6 +23,7 @@ import {
 
 vi.mock('@/common', () => ({
   ipcBridge: {
+    acpConversation: { responseStream: { on: vi.fn().mockReturnValue(() => {}) } },
     realtime: { reconnected: { on: vi.fn().mockReturnValue(() => {}) } },
     conversation: {
       userCreated: {
