@@ -10,6 +10,9 @@ import { getContentTypeByExtension } from '@/renderer/pages/conversation/Preview
 import { usePreviewContext } from '@/renderer/pages/conversation/Preview/context/PreviewContext';
 import { resolvePreviewPayload, upgradeFileRef } from '@/renderer/utils/file/previewPayload';
 import { getCurrentProject } from '@/renderer/pages/conversation/explorer/currentProjectStore';
+import { isAbsoluteMessageFilePath, resolveMessageFilePath } from '../../Messages/components/fileMarker';
+import { Message } from '@arco-design/web-react';
+import { useTranslation } from 'react-i18next';
 import { useCallback } from 'react';
 
 const getFileNameFromPath = (file_path: string): string => {
@@ -24,9 +27,16 @@ const getPreviewLanguage = (file_name: string): string => {
 
 export const useLocalFilePreview = (workspace?: string) => {
   const { openPreview } = usePreviewContext();
+  const { t } = useTranslation();
 
   return useCallback(
-    async (file_path: string, reference?: LocalFileLinkReference) => {
+    async (path: string, reference?: LocalFileLinkReference) => {
+      if (!isAbsoluteMessageFilePath(path) && !workspace) {
+        console.error('Cannot resolve relative file link without a workspace:', path);
+        Message.error(t('common.error'));
+        return;
+      }
+      const file_path = resolveMessageFilePath(path, workspace);
       const fileName = getFileNameFromPath(file_path);
       const contentType = getContentTypeByExtension(fileName);
       // Local-file links point at a backend-host absolute path (no pe identity) →
@@ -86,6 +96,6 @@ export const useLocalFilePreview = (workspace?: string) => {
         );
       }
     },
-    [openPreview, workspace]
+    [openPreview, workspace, t]
   );
 };

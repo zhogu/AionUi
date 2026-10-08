@@ -656,6 +656,10 @@ Conversations reload their saved messages after a realtime reconnect, a network-
 
 After a single-agent send is accepted, the frontend also ensures the shared WebSocket is connected. Open sockets are left alone; disconnected sockets reconnect using the existing transport, and connection attempts that have not opened within 10 seconds are retried with backoff. This is not a heartbeat health check: an `OPEN` socket is not forcibly replaced just because an agent has not produced output.
 
+The message transport replies to server heartbeat pings. If the visible conversation is still processing but its stream has been quiet for at least 10 seconds, the mounted message list also checks saved messages and runtime state over HTTP every 5 seconds. These fallback checks do not overlap each other, pause while the tab is hidden, and stop when processing ends or the conversation is unmounted. Normal streaming suppresses them. Recovery can only show content already saved by the backend; it cannot accelerate model generation or bypass a network outage affecting both HTTP and WebSocket.
+
+Markdown file links in chat replies (including Copilot's `task_complete` answer and tool output) open the file preview, not a browser tab. Relative file references such as `[research.py:419](src/stockkit/research.py#L419)` resolve against the conversation workspace and retain their target line/column. Absolute paths and ordinary web links keep their existing behavior. A missing workspace or unreadable file is reported rather than opening a guessed website address.
+
 Final text replacements update their original message segment, even when a tool call follows it; they do not append a second copy. Retired segments stay hidden when a stale history response arrives.
 
 ### Port Already in Use

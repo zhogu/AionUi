@@ -93,26 +93,30 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language, fileName]);
 
+  const revealTarget = useCallback(
+    (view: EditorView) => {
+      if (!targetLine || targetLine < 1) return;
+      if (targetLine > view.state.doc.lines) return;
+
+      const targetKey = `${fileName ?? ''}:${targetLine}:${targetColumn ?? ''}`;
+      if (revealedTargetRef.current === targetKey) return;
+      revealedTargetRef.current = targetKey;
+
+      const line = view.state.doc.line(targetLine);
+      const columnOffset =
+        targetColumn == null || targetColumn < 1 ? 0 : Math.min(targetColumn - 1, Math.max(0, line.length));
+      const position = line.from + columnOffset;
+      view.dispatch({
+        selection: { anchor: position },
+        effects: EditorView.scrollIntoView(position, { y: 'center' }),
+      });
+    },
+    [fileName, targetColumn, targetLine]
+  );
+
   useEffect(() => {
-    if (!targetLine || targetLine < 1) return;
-    const view = viewRef.current;
-    if (!view) return;
-
-    if (targetLine > view.state.doc.lines) return;
-
-    const targetKey = `${fileName ?? ''}:${targetLine}:${targetColumn ?? ''}`;
-    if (revealedTargetRef.current === targetKey) return;
-    revealedTargetRef.current = targetKey;
-
-    const line = view.state.doc.line(targetLine);
-    const columnOffset =
-      targetColumn == null || targetColumn < 1 ? 0 : Math.min(targetColumn - 1, Math.max(0, line.length));
-    const position = line.from + columnOffset;
-    view.dispatch({
-      selection: { anchor: position },
-      effects: EditorView.scrollIntoView(position, { y: 'center' }),
-    });
-  }, [fileName, targetColumn, targetLine, value.length]);
+    if (viewRef.current) revealTarget(viewRef.current);
+  }, [revealTarget, value.length]);
 
   // 区分外部流式增长 vs 用户编辑：外部增长时显示角标并自动滚到底
   // Distinguish external streaming growth from user edits: badge + auto-scroll on external growth
@@ -205,6 +209,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
         onChange={handleChange}
         onCreateEditor={(view: EditorView, _state: EditorState) => {
           viewRef.current = view;
+          revealTarget(view);
         }}
         readOnly={readOnly}
         basicSetup={basicSetupConfig}

@@ -15,6 +15,11 @@ import { copyText } from '@/renderer/utils/ui/clipboard';
 const mockDownloadFileFromPath = vi.fn().mockResolvedValue(undefined);
 const mockMessageSuccess = vi.fn();
 const mockMessageError = vi.fn();
+const previewLink = vi.hoisted(() => vi.fn());
+
+vi.mock('@/renderer/pages/conversation/Preview/hooks/useLocalFilePreview', () => ({
+  useLocalFilePreview: () => previewLink,
+}));
 
 vi.mock('@/renderer/utils/ui/clipboard', () => ({
   copyText: vi.fn().mockResolvedValue(undefined),
@@ -55,8 +60,12 @@ vi.mock('@arco-design/web-react', () => ({
 
 vi.mock('@renderer/components/Markdown', () => ({
   __esModule: true,
-  default: ({ children }: { children?: React.ReactNode }) => (
-    <div data-testid='markdown-view' data-markdown={typeof children === 'string' ? children : undefined}>
+  default: ({ children, onLocalFileLink }: { children?: React.ReactNode; onLocalFileLink?: unknown }) => (
+    <div
+      data-testid='markdown-view'
+      data-file-preview={onLocalFileLink === previewLink ? 'enabled' : undefined}
+      data-markdown={typeof children === 'string' ? children : undefined}
+    >
       {children}
     </div>
   ),
@@ -420,6 +429,7 @@ describe('MessageAcpToolCall image output', () => {
     );
 
     expect(screen.getByTestId('markdown-view')).toHaveAttribute('data-markdown', summary);
+    expect(screen.getByTestId('markdown-view')).toHaveAttribute('data-file-preview', 'enabled');
     expect(screen.queryByText('task_complete')).not.toBeInTheDocument();
     expect(screen.queryByText(/Tool Call ID/)).not.toBeInTheDocument();
   });

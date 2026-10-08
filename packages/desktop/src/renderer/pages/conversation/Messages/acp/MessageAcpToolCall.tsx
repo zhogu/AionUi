@@ -18,6 +18,8 @@ import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import MarkdownView from '@renderer/components/Markdown';
 import MessageCopyButton from '../components/MessageText/MessageCopyButton';
+import { useConversationContextSafe } from '@/renderer/hooks/context/ConversationContext';
+import { useLocalFilePreview } from '../../Preview/hooks/useLocalFilePreview';
 
 const StatusTag: React.FC<{ status: string }> = ({ status }) => {
   const getTagProps = () => {
@@ -64,7 +66,10 @@ const DiffContentView: React.FC<{ old_text: string; new_text: string; path: stri
   );
 };
 
-const ContentView: React.FC<{ content: IMessageAcpToolCall['content']['update']['content'][0] }> = ({ content }) => {
+const ContentView: React.FC<{
+  content: IMessageAcpToolCall['content']['update']['content'][0];
+  onLocalFileLink: ReturnType<typeof useLocalFilePreview>;
+}> = ({ content, onLocalFileLink }) => {
   if (content.type === 'diff') {
     return (
       <DiffContentView old_text={content.old_text || ''} new_text={content.new_text || ''} path={content.path || ''} />
@@ -77,7 +82,7 @@ const ContentView: React.FC<{ content: IMessageAcpToolCall['content']['update'][
       <div className='mt-3'>
         <div className='bg-1 p-3 rounded border overflow-hidden'>
           <div className='overflow-x-auto break-words'>
-            <MarkdownView>{content.content.text}</MarkdownView>
+            <MarkdownView onLocalFileLink={onLocalFileLink}>{content.content.text}</MarkdownView>
           </div>
         </div>
       </div>
@@ -125,6 +130,8 @@ const getTaskCompleteMarkdown = (update: IMessageAcpToolCall['content']['update'
 
 const MessageAcpToolCall: React.FC<{ message: IMessageAcpToolCall }> = ({ message }) => {
   const { t } = useTranslation();
+  const conversation = useConversationContextSafe();
+  const handleLocalFileLink = useLocalFilePreview(conversation?.workspace);
   const { content } = message;
   if (!content?.update) {
     return null;
@@ -155,7 +162,7 @@ const MessageAcpToolCall: React.FC<{ message: IMessageAcpToolCall }> = ({ messag
   if (taskCompleteMarkdown) {
     return (
       <div className='group w-full min-w-0 mb-2'>
-        <MarkdownView>{taskCompleteMarkdown}</MarkdownView>
+        <MarkdownView onLocalFileLink={handleLocalFileLink}>{taskCompleteMarkdown}</MarkdownView>
         <div className='mt-4px'>
           <MessageCopyButton text={taskCompleteMarkdown} />
         </div>
@@ -167,7 +174,11 @@ const MessageAcpToolCall: React.FC<{ message: IMessageAcpToolCall }> = ({ messag
     return (
       <div className='w-full mb-2 flex flex-col gap-8px'>
         {diffContent.map((contentItem, index) => (
-          <ContentView key={`${contentItem.path || 'diff'}-${index}`} content={contentItem} />
+          <ContentView
+            key={`${contentItem.path || 'diff'}-${index}`}
+            content={contentItem}
+            onLocalFileLink={handleLocalFileLink}
+          />
         ))}
       </div>
     );
@@ -214,7 +225,7 @@ const MessageAcpToolCall: React.FC<{ message: IMessageAcpToolCall }> = ({ messag
           {diffContent && diffContent.length > 0 && (
             <div>
               {diffContent.map((item, index) => (
-                <ContentView key={index} content={item} />
+                <ContentView key={index} content={item} onLocalFileLink={handleLocalFileLink} />
               ))}
             </div>
           )}

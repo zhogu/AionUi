@@ -98,7 +98,7 @@ const normalizeFilePath = (path: string): string => {
   return /^\/[A-Za-z]:[\\/]/.test(path) ? path.slice(1) : path;
 };
 
-const normalizeLocalFileHrefToPath = (href: string): LocalFilePathCandidate | null => {
+const normalizeLocalFileHrefToPath = (href: string, allowRelative = false): LocalFilePathCandidate | null => {
   if (/^https?:\/\//i.test(href)) return null;
 
   if (/^file:/i.test(href)) {
@@ -140,14 +140,27 @@ const normalizeLocalFileHrefToPath = (href: string): LocalFilePathCandidate | nu
   if (/^\/(Users|home|tmp|private|var|mnt|Volumes)\//.test(path)) return candidate;
   if (/^\/[^/?#]+\/.+\.[^/?#/.]+$/.test(path)) return candidate;
 
+  const relativePath = path.replace(/:\d+(?::\d+)?$/, '');
+  if (
+    allowRelative &&
+    !/^(?:[a-z][a-z0-9+.-]*:|[\\/])/i.test(relativePath) &&
+    !/[?#]/.test(relativePath) &&
+    /^(?:\.{1,2}[\\/].+|(?:[^\\/]+[\\/])*[^\\/]+\.[^\\/.]+)$/.test(relativePath)
+  ) {
+    return candidate;
+  }
+
   return null;
 };
 
-const splitLocationSuffix = (filePath: string): Omit<LocalFileLinkReference, 'rawReference'> & LocalFileLocation => {
+const splitLocationSuffix = (
+  filePath: string,
+  allowRelative: boolean
+): Omit<LocalFileLinkReference, 'rawReference'> & LocalFileLocation => {
   const lineColumnMatch = /^(.*):(\d+):(\d+)$/.exec(filePath);
   if (lineColumnMatch) {
     const [, pathWithoutLocation, lineText, columnText] = lineColumnMatch;
-    if (normalizeLocalFileHrefToPath(pathWithoutLocation)) {
+    if (normalizeLocalFileHrefToPath(pathWithoutLocation, allowRelative)) {
       return {
         filePath: pathWithoutLocation,
         line: Number(lineText),
@@ -161,7 +174,7 @@ const splitLocationSuffix = (filePath: string): Omit<LocalFileLinkReference, 'ra
   if (!lineMatch) return { filePath };
 
   const [, pathWithoutLocation, lineText] = lineMatch;
-  if (!normalizeLocalFileHrefToPath(pathWithoutLocation)) return { filePath };
+  if (!normalizeLocalFileHrefToPath(pathWithoutLocation, allowRelative)) return { filePath };
 
   return {
     filePath: pathWithoutLocation,
@@ -185,15 +198,17 @@ const formatRawReference = (
 
 export const resolveLocalFileLinkReference = (
   rawHref: string,
-  resolvedHref?: string
+  resolvedHref?: string,
+  allowRelative = false
 ): LocalFileLinkReference | null => {
   const href = safeDecodeURIComponent((rawHref || resolvedHref || '').trim());
   if (!href) return null;
 
-  const candidate = normalizeLocalFileHrefToPath(href);
+  if (href.startsWith('//')) return null;
+  const candidate = normalizeLocalFileHrefToPath(href, allowRelative);
   if (!candidate || candidate.hasInvalidHash) return null;
 
-  const colonReference = splitLocationSuffix(candidate.filePath);
+  const colonReference = splitLocationSuffix(candidate.filePath, allowRelative);
   const reference =
     candidate.hashLocation?.line == null
       ? colonReference
@@ -202,7 +217,7 @@ export const resolveLocalFileLinkReference = (
           filePath: colonReference.filePath,
         };
 
-  if (!normalizeLocalFileHrefToPath(reference.filePath)) return null;
+  if (!normalizeLocalFileHrefToPath(reference.filePath, allowRelative)) return null;
 
   const source = candidate.hashLocation?.line == null ? colonReference.source : 'hash';
   const { source: _source, ...publicReference } = reference;

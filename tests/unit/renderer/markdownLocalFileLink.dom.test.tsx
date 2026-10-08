@@ -66,6 +66,17 @@ vi.mock('react-i18next', () => ({
 }));
 
 describe('MarkdownView local file links', () => {
+  it('opens the screenshot relative source reference as a file, preserving the target line', () => {
+    const onLocalFileLink = vi.fn();
+    render(
+      <MarkdownView onLocalFileLink={onLocalFileLink}>
+        {'[research.py:419](src/stockkit/research.py#L419)'}
+      </MarkdownView>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'research.py:419 L419' }));
+    expect(onLocalFileLink).toHaveBeenCalledWith('src/stockkit/research.py', expect.objectContaining({ line: 419 }));
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     copyTextMock.mockClear();
   });
