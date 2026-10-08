@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 import type { TChatConversation } from '@/common/config/storage';
 import { isElectronDesktop } from '@/renderer/utils/platform';
+import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conversationCache';
 
 /**
  * Single owner of `document.title`.
@@ -39,10 +40,12 @@ const DocumentTitle: React.FC = () => {
   const { t, i18n } = useTranslation();
   const hostname = isElectronDesktop() ? undefined : window.location.hostname;
   const conversationId = matchPath('/conversation/:id', pathname)?.params.id;
-  // Observe the page's existing cache: no extra request or rename subscription.
+  // Share the page's cache and fetcher: a fetcher-less first subscriber would
+  // swallow SWR revalidation triggered by rename events.
   const { data: conversation } = useSWR<TChatConversation | null>(
     hostname !== undefined && conversationId ? `conversation/${conversationId}` : null,
-    { fetcher: null, keepPreviousData: false }
+    (key: string) => getConversationOrNull(key.slice('conversation/'.length)),
+    { revalidateOnMount: false, keepPreviousData: false }
   );
   const conversationName = conversation && conversation.id === conversationId ? conversation.name : undefined;
 
