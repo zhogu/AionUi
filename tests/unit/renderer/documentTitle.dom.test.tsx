@@ -9,10 +9,15 @@ import { MemoryRouter, useNavigate } from 'react-router-dom';
 import type { NavigateFunction } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
-import { SWRConfig, useSWRConfig } from 'swr';
+import useSWR, { SWRConfig, useSWRConfig } from 'swr';
 import { isElectronDesktop } from '@/renderer/utils/platform';
+import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conversationCache';
 
 let mockLanguage = 'en-US';
+
+vi.mock('@/renderer/pages/conversation/utils/conversationCache', () => ({
+  getConversationOrNull: vi.fn(),
+}));
 
 vi.mock('@/renderer/utils/platform', () => ({
   isElectronDesktop: vi.fn(() => true),
@@ -21,6 +26,7 @@ vi.mock('@/renderer/utils/platform', () => ({
 beforeEach(() => {
   mockLanguage = 'en-US';
   vi.mocked(isElectronDesktop).mockReturnValue(true);
+  vi.mocked(getConversationOrNull).mockReset();
 });
 
 vi.mock('react-i18next', () => ({
@@ -70,6 +76,38 @@ describe('titleForPath', () => {
 });
 
 describe('DocumentTitle', () => {
+  it('does not block the conversation page from revalidating its name after a rename event', async () => {
+    vi.mocked(isElectronDesktop).mockReturnValue(false);
+    let name = 'Before rename';
+    const fetchConversation = vi.fn(async () => ({ id: 'first', name }));
+    vi.mocked(getConversationOrNull).mockImplementation(async () => ({
+      id: 'first',
+      name,
+      type: 'acp',
+      extra: {},
+      created_at: 0,
+      modified_at: 0,
+    }));
+    let refresh!: () => Promise<unknown>;
+    const Page = () => {
+      const { mutate } = useSWR('conversation/first', fetchConversation);
+      refresh = mutate;
+      return null;
+    };
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter initialEntries={['/conversation/first']}>
+          <DocumentTitle />
+          <Page />
+        </MemoryRouter>
+      </SWRConfig>
+    );
+    await waitFor(() => expect(document.title).toContain('Before rename'));
+    name = 'After rename';
+    await act(() => refresh());
+    await waitFor(() => expect(document.title).toContain('After rename'));
+  });
+
   it('tracks cache-backed session renames and navigation without fetching or retaining a stale name', async () => {
     vi.mocked(isElectronDesktop).mockReturnValue(false);
     const fetcher = vi.fn();
