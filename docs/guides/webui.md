@@ -525,6 +525,30 @@ native link rather than Arco, because Arco is inside the potentially failed
 vendor bundle. Its messages are inlined from the regular locale files at build
 time and use the browser language.
 
+After React mounts, authentication/configuration waits and lazy page downloads
+also show a loading view, with a manual reload action after 15 seconds. A failed
+page render (including a rejected lazy module download) logs the error and shows
+the same recovery action immediately instead of leaving an empty root. Slow
+requests can still finish normally; there is no automatic reload or auth bypass.
+
+If `/api/settings/client` resets and `/ws` repeatedly times out alongside asset
+downloads, diagnose the connection to the application, not just its static cache.
+The service worker's `AbortError` indicates its download deadline expired; it
+does not identify which network hop stalled. Even with an `/aionui/` entry page,
+this build uses root-relative `/api/`, `/ws`, `/login` and `/logout`. These routes
+must reach the same WebUI service, and `/ws` must support HTTP/1.1 Upgrade.
+Do not blindly rewrite the socket URL to `/aionui/ws`.
+
+On the deployment machine, compare a full GET from `http://127.0.0.1:25808/`
+with the public page and an exact failed asset URL. Check `/api/auth/user` and
+`/api/settings/client` too: a prompt unauthenticated 401 is not a timeout, but
+does not prove an authenticated session works. In the logged-in browser, the
+WebSocket handshake should return 101. Inspect nginx access/error logs and
+`journalctl -u aionui-webui.service` at the failure time. Test in a clean browser
+profile with extensions disabled and, separately, with Service Workers'
+**Bypass for network** enabled to isolate extension and cache effects. Do not
+clear all site data or share authentication headers/cookies when reporting results.
+
 These safeguards do not repair a persistently broken proxy or make a first-time
 offline visit possible. For truncated downloads, compare the **full GET body**
 from the local WebUI port and public proxy (not just `curl -I`). Use the exact
@@ -541,6 +565,47 @@ the page manually. If a broken old worker prevents startup, use DevTools →
 Application → Service Workers → **Bypass for network** / **Unregister** for this
 application only and reload. Do not clear all site data: that can remove login
 state and locally stored drafts.
+
+### Listening port but no HTTP response under systemd
+
+A service can remain `active (running)` with a listening socket while every
+request times out. Check the actual service name, user/system manager and port
+from the deployment configuration; they need not be `aionui-webui.service` and 25808.
+
+Systemd memory limits apply to the **whole service cgroup**, including WebUI,
+AionCore, Copilot adapters, CLI processes and their tools. A small `MemoryHigh`
+can force continuous reclaim and swap activity without an OOM kill. Processes
+blocked in `mem_cgroup_handle_over_high`, rapidly increasing `memory.events`
+`high` counts and high `memory.pressure` identify this condition. Static file
+downloads can stall or truncate as well as API and WebSocket connections.
+
+For a user service named `aionui.service`, inspect:
+
+```bash
+systemctl --user show aionui.service \
+  -p MainPID -p ControlGroup -p MemoryCurrent -p MemoryHigh -p MemoryMax
+cg=$(systemctl --user show aionui.service -p ControlGroup --value)
+cat "/sys/fs/cgroup${cg}/memory.events"
+cat "/sys/fs/cgroup${cg}/memory.pressure"
+free -h
+```
+
+Size limits for agent concurrency and available host memory; do not remove all
+limits or copy a budget from another machine blindly. For example, on an 8 GiB
+host with sufficient available memory, an overly restrictive 384 MiB high /
+512 MiB maximum budget was relieved with:
+
+```bash
+systemctl --user set-property aionui.service MemoryHigh=1536M MemoryMax=2G
+```
+
+This updates the running cgroup and persists generated overrides under
+`~/.config/systemd/user.control/` without restarting the service. These override
+lower-priority settings in `~/.config/systemd/user/`; inspect effective properties
+rather than just the original drop-in. Use `sudo systemctl` instead for a system
+service. Confirm the PID/start time is unchanged, complete HTTP downloads resume,
+the WebSocket handshake succeeds, and memory-pressure/event deltas recover.
+Do not restart or kill active agent tasks merely to relieve a tunable limit.
 
 ### Initial Copilot permissions
 
