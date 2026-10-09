@@ -7,11 +7,12 @@
 import { act, render, waitFor } from '@testing-library/react';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import type { NavigateFunction } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 import useSWR, { SWRConfig, useSWRConfig } from 'swr';
 import { isElectronDesktop } from '@/renderer/utils/platform';
 import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conversationCache';
+import { emitter } from '@/renderer/utils/emitter';
 
 let mockLanguage = 'en-US';
 
@@ -27,6 +28,10 @@ beforeEach(() => {
   mockLanguage = 'en-US';
   vi.mocked(isElectronDesktop).mockReturnValue(true);
   vi.mocked(getConversationOrNull).mockReset();
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 vi.mock('react-i18next', () => ({
@@ -76,6 +81,42 @@ describe('titleForPath', () => {
 });
 
 describe('DocumentTitle', () => {
+  it('flashes attention without losing the host/session title and clears it on return', async () => {
+    vi.useFakeTimers();
+    vi.mocked(isElectronDesktop).mockReturnValue(false);
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    const { unmount } = render(
+      <SWRConfig
+        value={{
+          provider: () => new Map(),
+          fallback: {
+            'conversation/first': { id: 'first', name: 'Session' },
+          },
+        }}
+      >
+        <MemoryRouter initialEntries={['/conversation/first']}>
+          <DocumentTitle />
+        </MemoryRouter>
+      </SWRConfig>
+    );
+    const title = document.title;
+    act(() => emitter.emit('chat.attention', { body: 'Waiting for input' }));
+    expect(document.title).toBe(`Waiting for input - ${title}`);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(document.title).toBe(title);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(document.title).toBe(`Waiting for input - ${title}`);
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    act(() => window.dispatchEvent(new Event('focus')));
+    expect(document.title).toBe(title);
+    act(() => vi.advanceTimersByTime(3000));
+    expect(document.title).toBe(title);
+    unmount();
+    expect(emitter.listenerCount('chat.attention')).toBe(0);
+  });
+
   it('does not block the conversation page from revalidating its name after a rename event', async () => {
     vi.mocked(isElectronDesktop).mockReturnValue(false);
     let name = 'Before rename';

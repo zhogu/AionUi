@@ -35,6 +35,7 @@ interface EventTypes {
   'codex.workspace.refresh': void;
   'chat.history.refresh': void;
   'chat.message.accepted': [string]; // conversation_id; HTTP acknowledgement, not a prompt replay
+  'chat.attention': [{ body: string } | null];
   // 会话删除事件 / Conversation deletion event
   'conversation.deleted': [string]; // conversation_id
   // 预览面板事件 / Preview panel events

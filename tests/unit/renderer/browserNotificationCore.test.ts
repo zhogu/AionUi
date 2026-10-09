@@ -136,6 +136,36 @@ describe('createBrowserNotificationController.onStreamMessage', () => {
     expect(show).toHaveBeenCalledTimes(1);
   });
 
+  it('deduplicates interleaved finishes per conversation rather than only the last turn', () => {
+    const { show, controller } = makeDeps();
+    for (const conversation_id of ['c1', 'c2', 'c1', 'c2']) {
+      controller.onStreamMessage({ type: 'finish', conversation_id, turn_id: 'same-id' });
+    }
+    expect(show).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    (id: string) => ({ tool_call: { tool_call_id: id, title: 'ask_user' } }),
+    (id: string) => ({ toolCall: { toolCallId: id, title: 'ask_user' } }),
+    (id: string) => ({ request_id: id }),
+  ])('uses the request identity, not the shared turn envelope, for questions', (data) => {
+    const { show, controller } = makeDeps();
+    for (const id of ['first', 'second', 'first']) {
+      controller.onStreamMessage({ type: 'acp_permission', conversation_id: 'c', msg_id: 'turn', data: data(id) });
+    }
+    expect(show).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not alert on replay of an event already seen while the user was watching', () => {
+    let enabled = false;
+    const show = vi.fn();
+    const controller = createBrowserNotificationController({ show, shouldShow: () => enabled, bodyFor: () => '' });
+    controller.onStreamMessage({ type: 'finish', conversation_id: 'c', turn_id: 't' });
+    enabled = true;
+    controller.onStreamMessage({ type: 'finish', conversation_id: 'c', turn_id: 't' });
+    expect(show).not.toHaveBeenCalled();
+  });
+
   it('ignores messages without a type', () => {
     const { show, controller } = makeDeps();
     controller.onStreamMessage({ conversation_id: 'c1' });
