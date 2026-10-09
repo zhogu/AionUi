@@ -4,13 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { matchPath, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 import type { TChatConversation } from '@/common/config/storage';
 import { isElectronDesktop } from '@/renderer/utils/platform';
 import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conversationCache';
+import { addEventListener } from '@/renderer/utils/emitter';
 
 /**
  * Single owner of `document.title`.
@@ -48,10 +49,46 @@ const DocumentTitle: React.FC = () => {
     { revalidateOnMount: false, keepPreviousData: false }
   );
   const conversationName = conversation && conversation.id === conversationId ? conversation.name : undefined;
+  const [attention, setAttention] = useState<string | null>(null);
+  const [showAttention, setShowAttention] = useState(false);
 
   useEffect(() => {
-    document.title = titleForPath(pathname, t, hostname, conversationName);
-  }, [pathname, t, i18n.language, hostname, conversationName]);
+    if (hostname === undefined) return;
+    const clear = () => setAttention(null);
+    const onVisible = () => {
+      if (!document.hidden && document.hasFocus()) clear();
+    };
+    const dispose = addEventListener('chat.attention', (notice) => {
+      setAttention(notice?.body ?? null);
+      setShowAttention(Boolean(notice));
+    });
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    document.addEventListener('pointerdown', clear);
+    document.addEventListener('keydown', clear);
+    return () => {
+      dispose();
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+      document.removeEventListener('pointerdown', clear);
+      document.removeEventListener('keydown', clear);
+    };
+  }, [hostname]);
+
+  useEffect(() => {
+    setAttention(null);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!attention) return;
+    const timer = window.setInterval(() => setShowAttention((visible) => !visible), 1000);
+    return () => window.clearInterval(timer);
+  }, [attention]);
+
+  useEffect(() => {
+    const title = titleForPath(pathname, t, hostname, conversationName);
+    document.title = attention && showAttention ? `${attention} - ${title}` : title;
+  }, [pathname, t, i18n.language, hostname, conversationName, attention, showAttention]);
 
   return null;
 };

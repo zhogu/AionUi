@@ -63,7 +63,7 @@ export type BrowserNotificationDeps = {
    * predicate keeps this controller — and its turn-finish detection / dedup —
    * shared across both paths.
    */
-  shouldShow: () => boolean;
+  shouldShow: (conversationId?: string) => boolean;
   show: (payload: NotificationPayload) => void;
   /**
    * Build the notification body for a given kind. `conversationId` is provided
@@ -75,9 +75,8 @@ export type BrowserNotificationDeps = {
 
 /**
  * Shape of a conversation response-stream message (`message.stream`). Both the
- * turn-finish and permission-request signals ride this single channel, keyed
- * by `type` — there is no separate `confirmation.add` / `turn.completed`
- * channel in a real conversation.
+ * turn-finish and permission-request signals ride this channel, keyed by
+ * `type`. The dedicated turn.completed event can also be normalized to finish.
  */
 export type StreamMessage = {
   type?: string;
@@ -86,6 +85,7 @@ export type StreamMessage = {
   /** Stable per-message id, used to dedup repeated confirmation frames
    *  (e.g. a reconnect replay re-delivering the same permission request). */
   msg_id?: string;
+  data?: unknown;
 };
 
 // Stream `type` values that represent the agent blocking on the user: a tool
@@ -95,23 +95,27 @@ export type StreamMessage = {
 const CONFIRMATION_TYPES = new Set(['acp_permission', 'permission', 'ask']);
 
 export const createBrowserNotificationController = (deps: BrowserNotificationDeps) => {
-  // Track the last turn we actually notified for, so repeated finish events
-  // for the same turn don't fire duplicate notifications.
-  let lastNotifiedTurnId: string | null = null;
-  // Confirmation frames we have already notified for (keyed by
-  // conversation_id + msg_id), so a reconnect replay of the same request does
-  // not fire a duplicate. Best-effort per controller lifetime, mirroring the
-  // turn dedup above.
-  const notifiedConfirmationKeys = new Set<string>();
+  const seen = new Set<string>();
+  const remember = (kind: NotificationKind, conversationId?: string, id?: string): boolean => {
+    if (!id) return false;
+    const key = JSON.stringify([kind, conversationId, id]);
+    if (seen.has(key)) return true;
+    seen.add(key);
+    if (seen.size > 256) seen.delete(seen.values().next().value!);
+    return false;
+  };
 
   const onStreamMessage = (message: StreamMessage): void => {
     if (!message?.type) return;
 
     if (CONFIRMATION_TYPES.has(message.type)) {
-      const dedupKey = message.msg_id ? `${message.conversation_id ?? ''}:${message.msg_id}` : null;
-      if (dedupKey && notifiedConfirmationKeys.has(dedupKey)) return;
-      if (!deps.shouldShow()) return;
-      if (dedupKey) notifiedConfirmationKeys.add(dedupKey);
+      const data = asRecord(message.data);
+      const tool = asRecord(data?.tool_call ?? data?.toolCall);
+      // ACP reuses the turn envelope msg_id for multiple permission/questions.
+      const requestId = data?.request_id ?? data?.requestId ?? data?.call_id ?? tool?.tool_call_id ?? tool?.toolCallId;
+      const id = typeof requestId === 'string' && requestId ? requestId : message.msg_id;
+      if (remember('confirmation', message.conversation_id, id)) return;
+      if (!deps.shouldShow(message.conversation_id)) return;
       deps.show({
         body: deps.bodyFor('confirmation', message.conversation_id),
         conversationId: message.conversation_id,
@@ -121,9 +125,8 @@ export const createBrowserNotificationController = (deps: BrowserNotificationDep
     }
 
     if (message.type === 'finish') {
-      if (message.turn_id && message.turn_id === lastNotifiedTurnId) return;
-      if (!deps.shouldShow()) return;
-      lastNotifiedTurnId = message.turn_id ?? null;
+      if (remember('turnCompleted', message.conversation_id, message.turn_id ?? message.msg_id)) return;
+      if (!deps.shouldShow(message.conversation_id)) return;
       deps.show({
         body: deps.bodyFor('turnCompleted', message.conversation_id),
         conversationId: message.conversation_id,
@@ -134,3 +137,6 @@ export const createBrowserNotificationController = (deps: BrowserNotificationDep
 
   return { onStreamMessage };
 };
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;

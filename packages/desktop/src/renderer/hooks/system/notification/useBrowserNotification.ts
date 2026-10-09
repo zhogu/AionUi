@@ -4,13 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ipcBridge } from '@/common';
 import { configService } from '@/common/config/configService';
 import { isElectronDesktop } from '@/renderer/utils/platform';
 import { getSnapshotConversationName } from '@/renderer/pages/conversation/GroupedHistory/hooks/useConversationListSync';
+import { emitter } from '@/renderer/utils/emitter';
 import {
   createBrowserNotificationController,
   shouldShowNotification,
@@ -20,20 +21,18 @@ import {
 
 /**
  * WebUI-only: show a browser notification when an agent requests a
- * confirmation or finishes a turn, while the tab is hidden. No-op in
- * Electron, in non-secure contexts, or where the Notification API is absent.
+ * confirmation or finishes a turn outside the focused conversation. Title
+ * attention also works without browser notification permission or HTTPS.
  */
 export const useBrowserNotification = (): void => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { pathname } = useLocation();
+  const currentConversation = useRef<string | undefined>(undefined);
+  currentConversation.current = matchPath('/conversation/:id', pathname)?.params.id;
 
   useEffect(() => {
     if (isElectronDesktop()) return;
-    if (typeof window === 'undefined' || !('Notification' in window) || !window.isSecureContext) return;
-
-    // Both signals (turn finish, permission request) ride the conversation
-    // response stream (`message.stream`), keyed by message `type`. There is no
-    // separate confirmation/turn-completed channel in a real conversation.
     const streamEmitter = ipcBridge.conversation.responseStream;
     if (!streamEmitter) return;
 
@@ -41,15 +40,11 @@ export const useBrowserNotification = (): void => {
     // resets if this effect re-runs (e.g. on a language change). Acceptable —
     // worst case is one duplicate notification across a locale switch.
     const controller = createBrowserNotificationController({
-      shouldShow: () =>
-        shouldShowNotification({
-          isElectron: isElectronDesktop(),
-          hasNotificationApi: 'Notification' in window,
-          isSecureContext: window.isSecureContext,
-          permission: Notification.permission as NotificationPermissionState,
-          settingEnabled: configService.get('system.notificationEnabled') !== false,
-          documentHidden: document.hidden,
-        }),
+      shouldShow: (conversationId) =>
+        configService.get('system.notificationEnabled') !== false &&
+        (document.hidden ||
+          !document.hasFocus() ||
+          (Boolean(conversationId) && conversationId !== currentConversation.current)),
       bodyFor: (kind, conversationId) => {
         const name = conversationId ? getSnapshotConversationName(conversationId) : undefined;
         if (kind === 'confirmation') {
@@ -62,9 +57,23 @@ export const useBrowserNotification = (): void => {
           : t('settings.browserNotification.bodyTurnCompleted');
       },
       show: ({ body, conversationId }) => {
+        emitter.emit('chat.attention', { body });
+        const hasNotificationApi = typeof Notification !== 'undefined';
+        if (
+          !shouldShowNotification({
+            isElectron: false,
+            hasNotificationApi,
+            isSecureContext: window.isSecureContext,
+            permission: hasNotificationApi ? (Notification.permission as NotificationPermissionState) : 'denied',
+            settingEnabled: configService.get('system.notificationEnabled') !== false,
+            documentHidden: true, // The focused-conversation gate has already passed.
+          })
+        )
+          return;
         try {
           const notification = new Notification('AionUi', { body });
           notification.onclick = () => {
+            emitter.emit('chat.attention', null);
             window.focus();
             if (conversationId) void navigate(`/conversation/${conversationId}`);
             notification.close();
@@ -76,8 +85,17 @@ export const useBrowserNotification = (): void => {
     });
 
     const disposeStream = streamEmitter.on(controller.onStreamMessage);
+    const disposeCompleted = ipcBridge.conversation.turnCompleted.on((event) => {
+      controller.onStreamMessage({ type: 'finish', conversation_id: event.session_id, turn_id: event.turn_id });
+    });
+    const disposeSetting = configService.subscribe('system.notificationEnabled', (enabled) => {
+      if (enabled === false) emitter.emit('chat.attention', null);
+    });
     return () => {
       disposeStream();
+      disposeCompleted();
+      disposeSetting();
+      emitter.emit('chat.attention', null);
     };
   }, [navigate, t]);
 };
