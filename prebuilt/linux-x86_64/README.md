@@ -1,7 +1,7 @@
 # AionUi Web prebuilt package
 
 This branch contains a ready-to-deploy **Linux x86_64** build of AionUi Web
-2.2.2, rebuilt on 2026-10-08 with hostname/session browser tab titles, quiet-stream HTTP catch-up, workspace-relative Markdown file previews with line navigation, persistent startup recovery, completion-message reconciliation, interrupted-download recovery, recoverable initial Copilot Allow all setup, context-window selection, Copilot draft
+2.2.2, rebuilt on 2026-10-09 with browser notifications and flashing tab titles for completed replies and pending user input, hostname/session browser tab titles, quiet-stream HTTP catch-up, workspace-relative Markdown file previews with line navigation, persistent startup recovery, completion-message reconciliation, interrupted-download recovery, recoverable initial Copilot Allow all setup, context-window selection, Copilot draft
 queuing, native session titles, configuration-command routing, verified session
 recovery, graceful idle shutdown, realtime message reconciliation, duplicate final
 message fixes, single-message copying and CLI session ID display/copying from the
