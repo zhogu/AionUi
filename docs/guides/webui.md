@@ -28,6 +28,8 @@ Browser tabs display `AionUI - <host label> - <session name>`, updating when you
 
 When a reply finishes or an agent needs input (including Copilot `ask_user` and tool permissions), WebUI alerts you if that conversation is not currently focused. The tab title alternates between the normal title and the notification text until you return, interact with the page, or change routes. This works without browser notification permission. Enable **Notifications** in System settings and use **Enable browser notifications** to also allow system/browser notifications on HTTPS or localhost; clicking one focuses the page and opens the originating conversation. Disabling Notifications disables both types of alert. System sound and background-tab animation timing depend on browser/OS policies; the app does not force audio playback. Keep WebUI open to receive live events; these are not push notifications for a closed browser.
 
+Long conversations open with only their latest message page. Older messages load when you scroll to the top; opening the conversation no longer scans its full history for the message anchor rail. Whole-conversation search and export still load history explicitly when you request those actions, while search uses compact tool previews and full tool output remains available on demand.
+
 ---
 
 ## Windows

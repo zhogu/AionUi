@@ -64,8 +64,8 @@ const MessageAnchorRail: React.FC = () => {
   const conversationContext = useConversationContextSafe();
   const conversationId = conversationContext?.conversation_id;
 
-  // Covers the whole conversation, not just the pages the chat area has loaded, so
-  // reopening an old conversation shows every turn without scrolling up first.
+  // Uses only the bounded pages already loaded by the chat. Paging upward grows
+  // the rail without an automatic whole-history request on conversation open.
   const anchors = useConversationAnchors(conversationId, messages);
 
   // A callback ref, not a plain one: the rail is not rendered until a second

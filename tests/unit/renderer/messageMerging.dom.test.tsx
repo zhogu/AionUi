@@ -492,7 +492,7 @@ describe('message merging', () => {
     expect((result.current.messages[1] as IMessageText).content.content).toBe('whole response with live suffix');
   });
 
-  it('fills multiple missed pages and keeps older history before the new messages', async () => {
+  it('fills multiple missed pages forward without scanning older history', async () => {
     const invoke = vi.mocked(ipcBridge.database.getConversationMessages.invoke);
     const messages = Array.from({ length: 112 }, (_, i) => createTextMessage(`id-${i}`, `message ${i}`));
     invoke.mockResolvedValueOnce({
@@ -512,33 +512,35 @@ describe('message merging', () => {
     await flushMessageQueue();
     invoke
       .mockResolvedValueOnce({
-        items: messages.slice(62),
-        oldest_cursor: '62',
+        items: messages.slice(2, 52),
+        oldest_cursor: '2',
+        newest_cursor: '51',
+        has_more_before: true,
+        has_more_after: true,
+      })
+      .mockResolvedValueOnce({
+        items: messages.slice(52, 102),
+        oldest_cursor: '52',
+        newest_cursor: '101',
+        has_more_before: true,
+        has_more_after: true,
+      })
+      .mockResolvedValueOnce({
+        items: messages.slice(102),
+        oldest_cursor: '102',
         newest_cursor: '111',
         has_more_before: true,
         has_more_after: false,
-      })
-      .mockResolvedValueOnce({
-        items: messages.slice(12, 62),
-        oldest_cursor: '12',
-        newest_cursor: '61',
-        has_more_before: true,
-        has_more_after: true,
-      })
-      .mockResolvedValueOnce({
-        items: messages.slice(1, 12),
-        oldest_cursor: '1',
-        newest_cursor: '11',
-        has_more_before: true,
-        has_more_after: true,
       });
     const reconnect = vi.mocked(ipcBridge.realtime.reconnected.on).mock.calls.at(-1)![0];
     await act(async () => {
       reconnect({ timestamp: Date.now() });
     });
     expect(result.current.map((message) => message.msg_id)).toEqual(messages.map((message) => message.msg_id));
-    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ before: '62' }));
-    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ before: '12' }));
+    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ after: '1' }));
+    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ after: '51' }));
+    expect(invoke).toHaveBeenCalledWith(expect.objectContaining({ after: '101' }));
+    expect(invoke).not.toHaveBeenCalledWith(expect.objectContaining({ before: expect.any(String) }));
   });
 
   it('ignores late loads after switching conversations and recovers on tab visibility', async () => {
