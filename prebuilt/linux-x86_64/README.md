@@ -284,26 +284,31 @@ For an existing systemd service named `aionui-webui.service`, run as the same
 installation owner (adjust the checkout, service name and install paths if needed):
 
 ```bash
-(
-  set -e
-  cd ~/repo/AionUI-build
-  git switch build
-  git pull --ff-only origin build
-  sudo -v
-  sudo systemctl stop aionui-webui.service
-  bash prebuilt/linux-x86_64/install.sh
-  sudo systemctl start aionui-webui.service
-  sudo systemctl status aionui-webui.service --no-pager -l
-)
+cd ~/repo/AionUI-build
+bash prebuilt/linux-x86_64/update-and-verify.sh
 ```
 
-If installation fails, the block stops before starting the service. Inspect the
-error and retain the backup; do not remove data directories. Installation backups
-are **not database backups**. Use your normal data backup procedure before upgrades.
+The script fast-forwards the `build` branch, verifies the reconstructed archive
+before stopping the service, installs it, restarts the service, and waits for the
+local HTTP endpoint. If installation or verification after shutdown fails, it
+attempts to start the service again and prints its status. Override nonstandard
+deployments without editing the script:
+
+```bash
+SERVICE_NAME=aionui-webui.service PORT=25818 \
+  INSTALL_DIR="$HOME/.local/share/aionui-web" BIN_DIR="$HOME/.local/bin" \
+  bash prebuilt/linux-x86_64/update-and-verify.sh
+```
+
+Use `HEALTH_URL` when the local endpoint is not
+`http://127.0.0.1:$PORT/`, and `HEALTH_TIMEOUT` to change the default 60-second
+startup window. Inspect errors and retain the installer backup; do not remove data
+directories. Installation backups are **not database backups**. Use your normal
+data backup procedure before upgrades.
 For a legacy user service, use its actual `systemctl --user` stop/start/status
-commands instead. Keep `INSTALL_DIR` and `BIN_DIR` overrides consistent with its
-current installation. An upgrade does not migrate service managers or resource
-limits; migration is a separate maintenance operation.
+commands instead of this system-service script. Keep `INSTALL_DIR` and `BIN_DIR`
+overrides consistent with its current installation. An upgrade does not migrate
+service managers or resource limits; migration is a separate maintenance operation.
 
 Check `sudo systemctl cat aionui-webui.service` locally: `ExecStart` must reference
 the intended installation. `--backend-bin` or `AIONUI_BACKEND_BIN` can override the
