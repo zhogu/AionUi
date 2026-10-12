@@ -56,8 +56,17 @@ async function fixture() {
       state.mode = params.mode;
       return { status: 'applied' };
     }
-    if (method === 'session.commands.list') return { commands: [{ name: 'context', description: 'Context' }] };
-    if (method === 'session.commands.invoke') return { kind: 'text', text: 'Native context' };
+    if (method === 'session.commands.list')
+      return {
+        commands: [
+          { name: 'context', description: 'Context' },
+          { name: 'init', description: 'Initialize Copilot instructions' },
+        ],
+      };
+    if (method === 'session.commands.invoke')
+      return params.name === 'init'
+        ? { kind: 'agent-prompt', prompt: 'Create repository instructions.', displayPrompt: '/init' }
+        : { kind: 'text', text: 'Native context' };
     if (method === 'session.getMessages') return { events: [] };
     if (method === 'session.model.switchTo') {
       Object.assign(state.model, {
@@ -534,6 +543,19 @@ describe('prompt lifecycle and native tools', () => {
     await f.prompt('/context');
     await expect(f.prompt('/unknown-command')).rejects.toThrow('not sent to the model');
     expect(f.sdk.rpc.mock.calls.some(([method]) => method === 'session.send')).toBe(false);
+  });
+
+  it('expands native /init into its SDK agent prompt', async () => {
+    const f = await fixture();
+    const turn = f.prompt('/init');
+    await vi.waitFor(() =>
+      expect(f.sdk.rpc).toHaveBeenCalledWith('session.send', {
+        sessionId: f.sessionId,
+        prompt: 'Create repository instructions.',
+      })
+    );
+    f.emit('session.idle');
+    await expect(turn).resolves.toEqual({ stopReason: 'end_turn' });
   });
 
   it('returns prompt failure when the native session fails', async () => {

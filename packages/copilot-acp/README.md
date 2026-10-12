@@ -184,8 +184,8 @@ ownership `.json` and native session history. Never batch-delete locks.
   forms, OAuth dialogs and other native host callbacks are not advertised.
 - `/model ID`, `/autopilot on|off`, `/allow-all [on|off]` use the same validated
   session configuration path. `/allow-all` without an argument enables native
-  permission auto-approval; `/allow-all off` disables it. Native `/context`,
-  `/compact`, `/diff`, `/env` and
+  permission auto-approval; `/allow-all off` disables it. Native `/init`,
+  `/context`, `/compact`, `/diff`, `/env` and
   `/help` are offered only when returned by the SDK commands API. Other slash
   commands and host-only dialogs are rejected and **never sent verbatim to the
   model**. The native terminal UI’s complete command/dialog surface is not
