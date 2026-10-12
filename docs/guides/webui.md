@@ -574,6 +574,11 @@ Application → Service Workers → **Bypass for network** / **Unregister** for 
 application only and reload. Do not clear all site data: that can remove login
 state and locally stored drafts.
 
+Website links in agent Markdown open in a normal client browser tab. Workspace
+file links continue to open in AionUi's file preview. This avoids routing public
+sites through Electron's in-app `<webview>`, which is unavailable in standalone
+WebUI browsers and would otherwise render a blank preview.
+
 ### Listening port but no HTTP response under systemd
 
 A service can remain `active (running)` with a listening socket while every

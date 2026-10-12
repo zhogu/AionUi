@@ -9,7 +9,10 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import MarkdownView from '@/renderer/components/Markdown';
 
-const copyTextMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const { copyTextMock, openExternalUrlMock } = vi.hoisted(() => ({
+  copyTextMock: vi.fn().mockResolvedValue(undefined),
+  openExternalUrlMock: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock('@/renderer/components/Markdown/ShadowView', () => ({
   __esModule: true,
@@ -31,7 +34,7 @@ vi.mock('@/renderer/utils/chat/latexDelimiters', () => ({
 }));
 
 vi.mock('@/renderer/utils/platform', () => ({
-  openExternalUrl: vi.fn(),
+  openExternalUrl: openExternalUrlMock,
 }));
 
 vi.mock('@/renderer/utils/ui/clipboard', () => ({
@@ -79,6 +82,15 @@ describe('MarkdownView local file links', () => {
   });
   beforeEach(() => {
     copyTextMock.mockClear();
+    openExternalUrlMock.mockClear();
+  });
+
+  it('opens website links in the client browser instead of the in-app preview', () => {
+    render(<MarkdownView>{'[AionUi](https://github.com/iOfficeAI/AionUi?tab=readme-ov-file#readme)'}</MarkdownView>);
+
+    fireEvent.click(screen.getByRole('link', { name: 'AionUi' }));
+
+    expect(openExternalUrlMock).toHaveBeenCalledWith('https://github.com/iOfficeAI/AionUi?tab=readme-ov-file#readme');
   });
 
   it('renders local file links as app controls instead of browser anchors', () => {

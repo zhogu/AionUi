@@ -13,8 +13,6 @@ import rehypeRaw from 'rehype-raw';
 import 'katex/dist/katex.min.css';
 
 import { openExternalUrl } from '@/renderer/utils/platform';
-import { parseHttpUrl } from '@/renderer/utils/url';
-import { useOptionalPreviewContext } from '@/renderer/pages/conversation/Preview/context/PreviewContext';
 import classNames from 'classnames';
 import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -47,7 +45,6 @@ type MarkdownViewProps = {
 const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
   ({ hiddenCodeCopyButton, codeStyle, className, onRef, onLocalFileLink, allowHtml, children: childrenProp }) => {
     const { t } = useTranslation();
-    const preview = useOptionalPreviewContext();
 
     const normalizedChildren = useMemo(() => {
       if (typeof childrenProp === 'string') {
@@ -64,18 +61,11 @@ const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
         e.stopPropagation();
         const href = (e.currentTarget as HTMLAnchorElement).href;
         if (!href) return;
-        // Prefer the built-in browser tab for http(s) links; fall back to the
-        // system browser for other schemes or when no Preview panel is available.
-        const httpUrl = parseHttpUrl(href);
-        if (httpUrl && preview) {
-          preview.openBrowserTab(httpUrl);
-          return;
-        }
         openExternalUrl(href).catch((error: unknown) => {
           console.error(t('messages.openLinkFailed'), error);
         });
       },
-      [t, preview]
+      [t]
     );
 
     // Memoize components so React preserves component identity across re-renders.
