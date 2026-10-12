@@ -14,20 +14,9 @@ import {
 } from '@/common/config/i18n';
 import { applyDocumentDirection } from './direction';
 
-// Static imports for all locales to ensure packaged app can always switch language.
+// Keep only the fallback language in the initial bundle. Every other locale is
+// a content-hashed lazy chunk, so first paint does not download all translations.
 import enUS from './locales/en-US/index';
-import zhCN from './locales/zh-CN/index';
-import jaJP from './locales/ja-JP/index';
-import zhTW from './locales/zh-TW/index';
-import koKR from './locales/ko-KR/index';
-import trTR from './locales/tr-TR/index';
-import ruRU from './locales/ru-RU/index';
-import ukUA from './locales/uk-UA/index';
-import ptBR from './locales/pt-BR/index';
-import deDE from './locales/de-DE/index';
-import esES from './locales/es-ES/index';
-import frFR from './locales/fr-FR/index';
-import faIR from './locales/fa-IR/index';
 export type { I18nKey, I18nModule } from './i18n-keys';
 
 // Re-exports
@@ -36,36 +25,28 @@ export type { SupportedLanguage } from '@/common/config/i18n';
 
 export const supportedLanguages = i18nConfig.supportedLanguages;
 
-const localeData: LocaleData = {
-  'en-US': enUS,
-  'zh-CN': zhCN,
-  'ja-JP': jaJP,
-  'zh-TW': zhTW,
-  'ko-KR': koKR,
-  'tr-TR': trTR,
-  'ru-RU': ruRU,
-  'uk-UA': ukUA,
-  'pt-BR': ptBR,
-  'de-DE': deDE,
-  'es-ES': esES,
-  'fr-FR': frFR,
-  'fa-IR': faIR,
+const fallbackLocale = enUS as Record<string, unknown>;
+type LazyLanguage = Exclude<SupportedLanguage, 'en-US'>;
+const localeLoaders: Record<LazyLanguage, () => Promise<LocaleData[string]>> = {
+  'zh-CN': () => import('./locales/zh-CN/index').then((module) => module.default),
+  'ja-JP': () => import('./locales/ja-JP/index').then((module) => module.default),
+  'zh-TW': () => import('./locales/zh-TW/index').then((module) => module.default),
+  'ko-KR': () => import('./locales/ko-KR/index').then((module) => module.default),
+  'tr-TR': () => import('./locales/tr-TR/index').then((module) => module.default),
+  'ru-RU': () => import('./locales/ru-RU/index').then((module) => module.default),
+  'uk-UA': () => import('./locales/uk-UA/index').then((module) => module.default),
+  'pt-BR': () => import('./locales/pt-BR/index').then((module) => module.default),
+  'de-DE': () => import('./locales/de-DE/index').then((module) => module.default),
+  'es-ES': () => import('./locales/es-ES/index').then((module) => module.default),
+  'fr-FR': () => import('./locales/fr-FR/index').then((module) => module.default),
+  'fa-IR': () => import('./locales/fa-IR/index').then((module) => module.default),
 };
-
-const fallbackLocale = localeData[DEFAULT_LANGUAGE] ?? {};
 
 // Cache for loaded translations
 const loadedTranslations = new Map<string, Record<string, unknown>>();
 
 // Pre-populate cache with the synchronously loaded fallback locale
 loadedTranslations.set(DEFAULT_LANGUAGE, fallbackLocale as Record<string, unknown>);
-
-function getLocaleModules(locale: string): Record<string, unknown> {
-  const normalized = normalizeLanguageCode(locale);
-  const modules = localeData[normalized] ?? fallbackLocale;
-  if (normalized === DEFAULT_LANGUAGE) return modules;
-  return mergeWithFallback(fallbackLocale, modules);
-}
 
 function getLocalStorageLanguageHint(): string | null {
   if (typeof localStorage === 'undefined') return null;
@@ -100,7 +81,8 @@ async function loadLocaleModules(locale: string): Promise<Record<string, unknown
   const cached = loadedTranslations.get(normalized);
   if (cached) return cached;
 
-  const modules = getLocaleModules(normalized);
+  const loader = localeLoaders[normalized as LazyLanguage];
+  const modules = loader ? mergeWithFallback(fallbackLocale, await loader()) : fallbackLocale;
   loadedTranslations.set(normalized, modules);
   return modules;
 }
@@ -111,31 +93,25 @@ const initialResources: Record<string, { translation: Record<string, unknown> }>
     translation: fallbackLocale,
   },
 };
-if (initialLanguage !== DEFAULT_LANGUAGE) {
-  initialResources[initialLanguage] = {
-    translation: getLocaleModules(initialLanguage),
-  };
-}
 
-// Initialize i18n with fallback and initial locale loaded synchronously to avoid FOUC.
+// Initialize i18n with the fallback synchronously. The application shell waits
+// for i18nReady before rendering, so a lazy configured locale does not flash.
 // NOTE: We intentionally do NOT use i18next-browser-languagedetector here.
 // In WebUI mode the browser's localStorage is on a different origin than the
 // Electron renderer, so the detector would read the wrong (or missing) value
 // and fall back to navigator.language, causing a language mismatch (Issue #1176).
 // Instead, we use localStorage and Electron's injected local config language
 // only as hints for the initial render, then let configService be the source of truth.
-i18n
+const initializeI18n = i18n
   .use(initReactI18next)
   .init({
     resources: initialResources,
-    lng: initialLanguage,
+    lng: DEFAULT_LANGUAGE,
     fallbackLng: DEFAULT_LANGUAGE,
     debug: false,
     interpolation: { escapeValue: false },
   })
-  .catch((error: Error) => {
-    console.error('Failed to initialize i18n:', error);
-  });
+  .then((): void => {});
 
 // Load initial language from configService (single source of truth).
 // Wait until configService.whenReady() so we observe the authoritative value
@@ -176,8 +152,11 @@ i18n.on('languageChanged', (lang: string) => {
 });
 applyDocumentDirection(initialLanguage);
 
-// Initialize on module load
-void initLanguage();
+// The application shell waits for this promise, keeping the dependency-free
+// loader visible until the configured locale chunk is complete.
+export const i18nReady = initializeI18n.then(initLanguage).catch((error: Error) => {
+  console.error('Failed to initialize i18n:', error);
+});
 
 // Listen for language changes broadcast by the main process (from other renderers).
 // This enables real-time sync between desktop and WebUI — when one changes language,
@@ -210,6 +189,7 @@ export async function changeLanguage(lang: string): Promise<void> {
 // Clear translation cache (useful for development/testing)
 export function clearTranslationCache(): void {
   loadedTranslations.clear();
+  loadedTranslations.set(DEFAULT_LANGUAGE, fallbackLocale);
 }
 
 // Get loaded languages

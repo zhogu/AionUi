@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { execSync, execFileSync } = require('child_process');
 const { prepareAioncore } = require('../packages/shared-scripts/src/prepare-aioncore.js');
 const { resolveAioncoreVersion } = require('./resolveAioncoreVersion.js');
@@ -124,6 +125,20 @@ if (fs.existsSync(rendererOutDir)) {
   fs.cpSync(rendererOutDir, staticDest, { recursive: true });
 } else {
   throw new Error(`Desktop renderer output not found at ${rendererOutDir}. Run bunx electron-vite build first.`);
+}
+const compressionExtensions = new Set(['.css', '.js', '.json', '.svg', '.wasm']);
+for (const entry of fs.readdirSync(path.join(staticDest, 'assets'), { recursive: true, withFileTypes: true })) {
+  if (!entry.isFile()) continue;
+  const sourcePath = path.join(entry.parentPath, entry.name);
+  if (!compressionExtensions.has(path.extname(sourcePath))) continue;
+  const source = fs.readFileSync(sourcePath);
+  fs.writeFileSync(
+    `${sourcePath}.br`,
+    zlib.brotliCompressSync(source, {
+      params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 },
+    })
+  );
+  fs.writeFileSync(`${sourcePath}.gz`, zlib.gzipSync(source, { level: 9 }));
 }
 
 // 7. Copy bundled-aioncore

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aionui-webui-v3';
+const CACHE_NAME = 'aionui-webui-v4';
 const SCOPE_URL = new URL('./', self.location.href);
 const OFFLINE_PAGE_URL = new URL('./index.html', SCOPE_URL).toString();
 const PRECACHE_URLS = [
@@ -10,7 +10,7 @@ const PRECACHE_URLS = [
 
 // fetch() resolves at the headers, before a truncated body fails. Validate the
 // whole response within the deadline before returning or caching executable code.
-async function fetchComplete(request, timeoutMs = 60000) {
+async function fetchComplete(request, timeoutMs = 120000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -47,7 +47,7 @@ self.addEventListener('install', (event) => {
       await Promise.all(
         PRECACHE_URLS.map(async (url) => {
           try {
-            const response = await fetchComplete(url, 15000);
+            const response = await fetchComplete(url, 45000);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             await storeResponse(cache, url, response);
           } catch (error) {
@@ -66,7 +66,7 @@ self.addEventListener('activate', (event) => {
     (async () => {
       try {
         const keys = await caches.keys();
-        await Promise.all(keys.filter((key) => /^aionui-webui-v[12]$/.test(key)).map((key) => caches.delete(key)));
+        await Promise.all(keys.filter((key) => /^aionui-webui-v[1-3]$/.test(key)).map((key) => caches.delete(key)));
       } catch (error) {
         console.warn('[PWA] Could not remove obsolete caches', error);
       }
@@ -94,7 +94,7 @@ function isAssetContentTypeMismatch(request, response) {
 async function networkFirst(request) {
   const cache = await openCache();
   try {
-    const response = await fetchComplete(request, 15000);
+    const response = await fetchComplete(request, 45000);
     await storeResponse(cache, request, response);
     return response;
   } catch (error) {

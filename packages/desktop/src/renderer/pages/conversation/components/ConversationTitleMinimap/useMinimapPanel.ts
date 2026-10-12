@@ -112,7 +112,7 @@ export const useMinimapPanel = (conversation_id?: string): UseMinimapPanelReturn
     }
     setLoading(true);
     try {
-      const messages = await loadAllConversationMessagesPaged(conversation_id);
+      const messages = await loadAllConversationMessagesPaged(conversation_id, { contentMode: 'compact' });
       setItems(buildTurnPreview(messages));
     } catch (error) {
       console.error('[ConversationTitleMinimap] Failed to load conversation messages:', error);

@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { brotliCompressSync, gzipSync } from 'node:zlib';
 import type { AddressInfo } from 'node:net';
 import { startStaticServer, type StaticServerHandle } from './static-server.js';
 
@@ -73,6 +74,38 @@ describe('static-server', () => {
     const r = await fetch(`${handle.localUrl}/assets/main.js`);
     expect(r.status).toBe(200);
     expect(await r.text()).toContain('hi');
+  });
+
+  it('serves precompressed immutable assets when the browser accepts them', async () => {
+    const source = Buffer.from('console.log("compressed")'.repeat(100));
+    await fs.writeFile(path.join(staticDir, 'assets', 'compressed.js'), source);
+    await fs.writeFile(path.join(staticDir, 'assets', 'compressed.js.br'), brotliCompressSync(source));
+    await fs.writeFile(path.join(staticDir, 'assets', 'compressed.js.gz'), gzipSync(source));
+    handle = await startStaticServer({ staticDir, backendPort: 1, port: 0 });
+
+    const brotli = await fetch(`${handle.localUrl}/assets/compressed.js`, {
+      headers: { 'accept-encoding': 'br, gzip' },
+    });
+    expect(brotli.status).toBe(200);
+    expect(brotli.headers.get('content-encoding')).toBe('br');
+    expect(brotli.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(brotli.headers.get('vary')).toBe('Accept-Encoding');
+    expect(await brotli.text()).toBe(source.toString());
+
+    const gzip = await fetch(`${handle.localUrl}/assets/compressed.js`, {
+      headers: { 'accept-encoding': 'gzip' },
+    });
+    expect(gzip.headers.get('content-encoding')).toBe('gzip');
+    expect(await gzip.text()).toBe(source.toString());
+  });
+
+  it('marks uncompressed hashed assets immutable too', async () => {
+    handle = await startStaticServer({ staticDir, backendPort: 1, port: 0 });
+    const response = await fetch(`${handle.localUrl}/assets/main.js`, {
+      headers: { 'accept-encoding': 'identity' },
+    });
+    expect(response.headers.get('content-encoding')).toBeNull();
+    expect(response.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
   });
 
   it('returns 404 for missing build assets instead of caching SPA HTML as JavaScript', async () => {
