@@ -14,7 +14,7 @@ import {
 
 const MODES = ['interactive', 'plan', 'autopilot'];
 // Commands requiring terminal dialogs, host effects or persistent settings are deliberately excluded.
-const NATIVE_COMMANDS = new Set(['context', 'compact', 'diff', 'env', 'help']);
+const NATIVE_COMMANDS = new Set(['context', 'compact', 'diff', 'env', 'help', 'init']);
 const invalid = (message) => RequestError.invalidParams({ message }, message);
 
 /** Opt-in ACP agent; all model execution and coding tools remain in the native SDK server. */
