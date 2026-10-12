@@ -8,7 +8,7 @@ completed replies and pending user input, hostname/session browser tab titles,
 quiet-stream HTTP catch-up, workspace-relative Markdown file previews with line
 navigation, persistent startup recovery, completion-message reconciliation,
 interrupted-download recovery, recoverable initial Copilot Allow all setup,
-context-window selection, Copilot draft
+context-window selection, native Copilot `/init` support, Copilot draft
 queuing, native session titles, configuration-command routing, verified session
 recovery, graceful idle shutdown, realtime message reconciliation, duplicate final
 message fixes, single-message copying and CLI session ID display/copying from the
