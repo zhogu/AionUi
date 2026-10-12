@@ -65,7 +65,7 @@ describe('WebUI service worker resource recovery', () => {
   it('deletes only obsolete AionUi caches and does not navigate clients', async () => {
     const h = harness();
     await h.dispatch('activate').done();
-    expect(h.caches.delete.mock.calls).toEqual([['aionui-webui-v1'], ['aionui-webui-v2']]);
+    expect(h.caches.delete.mock.calls).toEqual([['aionui-webui-v1'], ['aionui-webui-v2'], ['aionui-webui-v3']]);
     expect(h.self.clients.claim).toHaveBeenCalledOnce();
   });
 
@@ -117,7 +117,7 @@ describe('WebUI service worker resource recovery', () => {
         )
     );
     const response = h.dispatch('fetch').response;
-    await vi.advanceTimersByTimeAsync(120001);
+    await vi.advanceTimersByTimeAsync(240001);
     expect((await response)?.type).toBe('error');
     expect(h.cache.put).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);

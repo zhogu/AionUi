@@ -11,8 +11,11 @@
  */
 
 import http, { type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import net, { type Socket } from 'node:net';
+import path from 'node:path';
 import serveHandler from 'serve-handler';
 
 export type StaticServerOptions = {
@@ -32,6 +35,59 @@ export type StaticServerHandle = {
 };
 
 const DEFAULT_PORT = 25808;
+const IMMUTABLE_ASSET_CACHE = 'public, max-age=31536000, immutable';
+
+const COMPRESSIBLE_ASSET_TYPES: Record<string, string> = {
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.wasm': 'application/wasm',
+};
+
+async function servePrecompressedAsset(
+  req: IncomingMessage,
+  res: ServerResponse,
+  staticDir: string,
+  pathname: string
+): Promise<boolean> {
+  if ((req.method !== 'GET' && req.method !== 'HEAD') || req.headers.range) return false;
+  const contentType = COMPRESSIBLE_ASSET_TYPES[path.extname(pathname).toLowerCase()];
+  if (!contentType) return false;
+
+  const relativePath = pathname.replace(/^\/+/, '');
+  const assetPath = path.resolve(staticDir, relativePath);
+  const root = path.resolve(staticDir);
+  if (assetPath !== root && !assetPath.startsWith(`${root}${path.sep}`)) return false;
+
+  const accepted = req.headers['accept-encoding'] ?? '';
+  const encoding = /\bbr\b/.test(accepted) ? 'br' : /\bgzip\b/.test(accepted) ? 'gzip' : undefined;
+  if (!encoding) return false;
+  const compressedPath = `${assetPath}.${encoding === 'br' ? 'br' : 'gz'}`;
+
+  let metadata;
+  try {
+    metadata = await stat(compressedPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+  if (!metadata.isFile()) return false;
+
+  res.writeHead(200, {
+    'Cache-Control': IMMUTABLE_ASSET_CACHE,
+    'Content-Encoding': encoding,
+    'Content-Length': metadata.size,
+    'Content-Type': contentType,
+    Vary: 'Accept-Encoding',
+  });
+  if (req.method === 'HEAD') {
+    res.end();
+  } else {
+    createReadStream(compressedPath).pipe(res);
+  }
+  return true;
+}
 
 // Ranges that are non-internal IPv4 yet never a reachable LAN address, so we
 // must never advertise them as the WebUI access URL even when they are the only
@@ -195,7 +251,14 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
         pathname.startsWith('/pwa/') ||
         pathname === '/sw.js' ||
         pathname === '/manifest.webmanifest';
-      if (!isAsset || pathname === '/sw.js') res.setHeader('Cache-Control', 'no-cache');
+      if (!isAsset || pathname === '/sw.js') {
+        res.setHeader('Cache-Control', 'no-cache');
+      } else if (pathname.startsWith('/assets/')) {
+        res.setHeader('Cache-Control', IMMUTABLE_ASSET_CACHE);
+      }
+      if (pathname.startsWith('/assets/') && (await servePrecompressedAsset(req, res, opts.staticDir, pathname))) {
+        return;
+      }
       await serveHandler(req, res, {
         public: opts.staticDir,
         rewrites: isAsset ? [] : [{ source: '**', destination: '/index.html' }],
@@ -258,6 +321,11 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
     client.on('error', onEarlyError);
     client.on('end', onEarlyEnd);
   });
+  // Weak links may need minutes to receive large static chunks. Keep request
+  // and established socket lifetimes unbounded; the outer TCP splice already
+  // disables its socket timeout too.
+  http_server.requestTimeout = 0;
+  http_server.timeout = 0;
 
   await new Promise<void>((resolve, reject) => {
     tcp_server.once('error', reject);

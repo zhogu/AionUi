@@ -78,6 +78,8 @@
         var status = document.getElementById('boot-status');
         var message = document.getElementById('boot-message');
         var reload = document.getElementById('boot-reload');
+        var retryKey = 'aionui-boot-resource-retry';
+        var retrying = false;
         message.textContent = text.loading;
         reload.textContent = text.reload;
         reload.onclick = function (event) {
@@ -89,14 +91,30 @@
           message.textContent = text.failed;
           reload.hidden = false;
         }
+        function retryOnce() {
+          if (retrying || !status.isConnected) return;
+          try {
+            if (sessionStorage.getItem(retryKey)) return failed();
+            sessionStorage.setItem(retryKey, '1');
+          } catch (error) {
+            return failed();
+          }
+          retrying = true;
+          setTimeout(function () {
+            window.location.reload();
+          }, 1000);
+        }
         function onError(event) {
           var target = event.target;
-          if (target && (target.tagName === 'SCRIPT' || target.tagName === 'LINK')) failed();
+          if (target && (target.tagName === 'SCRIPT' || target.tagName === 'LINK')) retryOnce();
         }
         window.addEventListener('error', onError, true);
-        var timer = setTimeout(failed, 15000);
+        var timer = setTimeout(failed, 45000);
         var observer = new MutationObserver(function () {
           if (status.isConnected) return;
+          try {
+            sessionStorage.removeItem(retryKey);
+          } catch (error) {}
           clearTimeout(timer);
           window.removeEventListener('error', onError, true);
           observer.disconnect();

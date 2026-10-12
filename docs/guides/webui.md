@@ -30,6 +30,8 @@ When a reply finishes or an agent needs input (including Copilot `ask_user` and 
 
 Long conversations open with only their latest message page. Older messages load when you scroll to the top; opening the conversation no longer scans its full history for the message anchor rail. Whole-conversation search and export still load history explicitly when you request those actions, while search uses compact tool previews and full tool output remains available on demand.
 
+Standalone WebUI packages include Brotli and gzip copies of production JavaScript/CSS. The built-in server selects the best encoding, gives content-hashed assets immutable one-year caching, and leaves progressing responses without a server-side request timeout. The service worker validates complete downloads and retries failed executable assets with a two-minute allowance; the pre-React loader also performs one guarded reload after a script or stylesheet download failure before showing the manual recovery action.
+
 ---
 
 ## Windows

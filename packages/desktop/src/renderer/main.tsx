@@ -88,7 +88,7 @@ configService.initialize().catch((err) => {
 });
 
 // i18n
-import './services/i18n';
+import { i18nReady } from './services/i18n';
 import { isRtlLanguage } from './services/i18n/direction';
 import { registerPwa } from './services/registerPwa';
 
@@ -346,7 +346,7 @@ const Main = () => {
 
   useEffect(() => {
     if (!ready) return;
-    void bootstrapRendererConfig().finally(() => setConfigReady(true));
+    void Promise.all([bootstrapRendererConfig(), i18nReady]).finally(() => setConfigReady(true));
   }, [ready]);
 
   useEffect(() => {
