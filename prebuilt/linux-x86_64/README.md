@@ -6,7 +6,8 @@ Brotli/gzip static assets, immutable hashed-asset caching, slow-network timeouts
 automatic startup retry, browser notifications and flashing tab titles for
 completed replies and pending user input, hostname/session browser tab titles,
 quiet-stream HTTP catch-up, workspace-relative Markdown file previews with line
-navigation, persistent startup recovery, completion-message reconciliation,
+navigation, website links that open in client browser tabs, persistent startup
+recovery, completion-message reconciliation,
 interrupted-download recovery, recoverable initial Copilot Allow all setup,
 context-window selection, native Copilot `/init` support, Copilot draft
 queuing, native session titles, configuration-command routing, verified session
