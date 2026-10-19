@@ -115,7 +115,6 @@ tar -tzf "${verify_dir}/${archive_name}" >/dev/null
 cleanup
 verify_dir=''
 
-sudo -v
 sudo systemctl cat "$SERVICE_NAME" >/dev/null
 if ! sudo systemctl is-active --quiet "$SERVICE_NAME"; then
   echo "${SERVICE_NAME} is not active; refusing to start an intentionally stopped service." >&2
