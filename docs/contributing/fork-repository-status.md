@@ -21,11 +21,11 @@ GitHub account and in `~/repo`.
 
 ### Active branches
 
-| Branch                                      | Head                                  | State                                                                                                       |
-| ------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `main`                                      | `f38599d2a` plus this status document | Clean at the snapshot; contains all source feature and fix branches                                         |
-| `build`                                     | `17e641066`                           | Clean and identical to `origin/build`; contains `main` plus prebuilt Linux artifacts and deployment scripts |
-| `experiment/copilot-session-recovery-build` | `891742647`                           | Historical packaging branch; already an ancestor of `build`                                                 |
+| Branch                                      | Head                                  | State                                                                                                                             |
+| ------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `main`                                      | `f38599d2a` plus this status document | Clean at the snapshot; contains all source feature and fix branches                                                               |
+| `build`                                     | `17e641066`                           | Clean and identical to `origin/build`; contains product baseline `f38599d2a` plus prebuilt Linux artifacts and deployment scripts |
+| `experiment/copilot-session-recovery-build` | `891742647`                           | Historical packaging branch; already an ancestor of `build`                                                                       |
 
 `build` is intentionally not merged back into `main`: its additional commits are
 generated archives, package metadata, and deployment tooling. Source changes flow
